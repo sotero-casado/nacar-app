@@ -441,7 +441,7 @@ function actualizarAtras() {
   document.getElementById("btn-atras").style.display = historial.length > 1 ? "flex" : "none";
 }
 function irTab(tab) {
-  const fn = tab === "hoy" ? pintarHoy : tab === "buscar" ? pintarBuscar : pintarAgenda;
+  const fn = tab === "hoy" ? pintarHoy : tab === "buscar" ? pintarBuscar : tab === "calc" ? pintarCalc : pintarAgenda;
   historial = [fn];
   actualizarTabs(tab);
   fn();
@@ -835,11 +835,120 @@ function cerrarSesion() {
   if (msalApp) msalApp.logoutRedirect({ account: cuenta });
 }
 
+/* ============================================================
+   CALCULADORA DE INDEMNIZACIONES
+   Reglas: Guía CGPJ oct-2024 (skill calculo-indemnizaciones del despacho)
+   - Salario diario = bruto anual / 365 (STS 22-2-2020)
+   - Meses redondeados al alza, fecha de efectos inclusive (SSTS 20-7-2009 y otras)
+   - Improcedente: 33 d/año (2,75/mes), tope 720 días; doble tramo DT 11ª si
+     el contrato es anterior al 12-02-2012 (45 d/año el tramo 1; topes STS 18-2-2016)
+   - Objetivo/colectivo: 20 d/año (20/12 por mes), tope 360 días; MSCT tope 270
+   - Temporal: días naturales x coeficiente DT 8ª ET (8 a 12 d/año), sin prorrateo
+   ============================================================ */
+const FMT_EUR = new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" });
+function mesesIndem(inicio, finInclusive) {
+  const fin = new Date(finInclusive.getTime() + 86400000);
+  let meses = (fin.getFullYear() - inicio.getFullYear()) * 12 + (fin.getMonth() - inicio.getMonth());
+  let resto = fin.getDate() - inicio.getDate();
+  if (resto < 0) { meses--; resto = 1; }
+  if (meses < 0) return 0;
+  return meses + (resto > 0 ? 1 : 0);
+}
+function pintarCalc() {
+  ponerEstado("Calculadora");
+  pintar('<div style="padding:16px;max-width:560px;">' +
+    '<p style="margin:0 0 2px;font-size:17px;font-weight:600;">Calculadora de indemnización</p>' +
+    '<p style="margin:0 0 14px;font-size:12px;color:var(--texto-2);">Criterios de la Guía CGPJ (oct. 2024) · cálculo orientativo</p>' +
+    '<label class="lbl-calc">Tipo de extinción</label>' +
+    '<select id="c-tipo" class="campo-calc">' +
+    '<option value="improcedente">Despido improcedente / art. 50 ET</option>' +
+    '<option value="objetivo">Despido objetivo o colectivo (20 días)</option>' +
+    '<option value="msct">Modificación sustancial – MSCT (20 días, tope 9 mens.)</option>' +
+    '<option value="temporal">Fin de contrato temporal (DT 8ª ET)</option></select>' +
+    '<label class="lbl-calc">Fecha de inicio (antigüedad)</label>' +
+    '<input type="date" id="c-inicio" class="campo-calc" />' +
+    '<label class="lbl-calc">Fecha de efectos del despido / fin</label>' +
+    '<input type="date" id="c-fin" class="campo-calc" />' +
+    '<label class="lbl-calc">Salario bruto</label>' +
+    '<div style="display:flex;gap:8px;">' +
+    '<input type="number" id="c-salario" class="campo-calc" style="flex:2;" placeholder="Importe en euros" inputmode="decimal" />' +
+    '<select id="c-unidad" class="campo-calc" style="flex:1.4;"><option value="anual">anual</option><option value="mensual">mensual</option></select>' +
+    '<select id="c-pagas" class="campo-calc" style="flex:1;display:none;"><option value="12">12 pagas</option><option value="14" selected>14 pagas</option><option value="15">15 pagas</option></select></div>' +
+    '<button class="boton-principal" style="width:100%;margin-top:14px;" onclick="calcularIndem()"><i class="ti ti-calculator" style="vertical-align:-2px;"></i> Calcular</button>' +
+    '<div id="c-resultado"></div>' +
+    '<p style="margin:16px 0 0;font-size:11px;color:var(--texto-3);">No incluye salarios de tramitación, FOGASA ni mejoras de convenio. El salario en especie (seguro médico, vehículo...) computa como salario: si existe, súmalo al bruto.</p></div>');
+  document.getElementById("c-unidad").addEventListener("change", function () {
+    document.getElementById("c-pagas").style.display = this.value === "mensual" ? "block" : "none";
+  });
+}
+function calcularIndem() {
+  const tipo = document.getElementById("c-tipo").value;
+  const inicio = document.getElementById("c-inicio").valueAsDate;
+  const fin = document.getElementById("c-fin").valueAsDate;
+  const importe = parseFloat(document.getElementById("c-salario").value);
+  const unidad = document.getElementById("c-unidad").value;
+  const pagas = parseInt(document.getElementById("c-pagas").value, 10);
+  const out = document.getElementById("c-resultado");
+  if (!inicio || !fin || !importe || fin <= inicio) {
+    out.innerHTML = '<p style="margin:12px 0 0;font-size:13px;color:var(--rojo,#A32D2D);">Revisa los datos: faltan fechas o salario, o el fin es anterior al inicio.</p>';
+    return;
+  }
+  const anual = unidad === "anual" ? importe : importe * pagas;
+  const sd = anual / 365;
+  const filas = [];
+  filas.push(["Salario bruto anual", FMT_EUR.format(anual)]);
+  filas.push(["Salario diario (÷365)", FMT_EUR.format(sd)]);
+  let dias = 0, topeTxt = "";
+  if (tipo === "improcedente") {
+    const corte = new Date(2012, 1, 12);
+    if (inicio < corte) {
+      const m1 = mesesIndem(inicio, new Date(2012, 1, 11));
+      const m2 = fin >= corte ? mesesIndem(corte, fin) : 0;
+      const d1 = m1 * 3.75, d2 = m2 * 2.75;
+      filas.push(["Tramo 1 (hasta 11-02-2012, 45 d/año)", m1 + " meses × 3,75 = " + d1.toFixed(2) + " días"]);
+      filas.push(["Tramo 2 (desde 12-02-2012, 33 d/año)", m2 + " meses × 2,75 = " + d2.toFixed(2) + " días"]);
+      if (d1 >= 720) {
+        dias = Math.min(d1, 1260);
+        topeTxt = d1 > 1260 ? "Aplicado tope absoluto de 42 mensualidades (1.260 días)" : "El tramo 1 ya supera 720 días: se respeta lo devengado a 11-02-2012 (máx. 1.260)";
+      } else {
+        dias = Math.min(d1 + d2, 720);
+        if (d1 + d2 > 720) topeTxt = "Aplicado tope global de 24 mensualidades (720 días)";
+      }
+    } else {
+      const m = mesesIndem(inicio, fin);
+      filas.push(["Antigüedad computada", m + " meses (redondeo al alza)"]);
+      filas.push(["Devengo (33 d/año)", m + " × 2,75 = " + (m * 2.75).toFixed(2) + " días"]);
+      dias = Math.min(m * 2.75, 720);
+      if (m * 2.75 > 720) topeTxt = "Aplicado tope de 24 mensualidades (720 días)";
+    }
+  } else if (tipo === "objetivo" || tipo === "msct") {
+    const m = mesesIndem(inicio, fin);
+    const tope = tipo === "msct" ? 270 : 360;
+    filas.push(["Antigüedad computada", m + " meses (redondeo al alza)"]);
+    filas.push(["Devengo (20 d/año)", m + " × 20/12 = " + (m * 20 / 12).toFixed(2) + " días"]);
+    dias = Math.min(m * 20 / 12, tope);
+    if (m * 20 / 12 > tope) topeTxt = "Aplicado tope de " + (tope / 30) + " mensualidades (" + tope + " días)";
+  } else {
+    const diasTrab = Math.round((fin - inicio) / 86400000) + 1;
+    const y = inicio.getFullYear();
+    const coef = y <= 2011 ? 8 : y === 2012 ? 9 : y === 2013 ? 10 : y === 2014 ? 11 : 12;
+    filas.push(["Días naturales trabajados", diasTrab + " días"]);
+    filas.push(["Coeficiente DT 8ª (contrato de " + y + ")", coef + " días/año"]);
+    dias = diasTrab * coef / 365;
+  }
+  const total = sd * dias;
+  let html = '<div style="margin-top:14px;border:0.5px solid var(--borde);border-radius:12px;overflow:hidden;">';
+  filas.forEach(f => { html += '<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 12px;border-bottom:0.5px solid var(--borde);font-size:13px;"><span style="color:var(--texto-2);">' + f[0] + '</span><span style="text-align:right;">' + f[1] + '</span></div>'; });
+  html += '<div style="display:flex;justify-content:space-between;padding:11px 12px;background:var(--teal-bg);font-size:14px;"><span style="font-weight:600;">Indemnización</span><span style="font-weight:600;color:var(--teal);">' + FMT_EUR.format(total) + '</span></div></div>' +
+    '<p style="margin:8px 0 0;font-size:12px;color:var(--texto-2);">' + dias.toFixed(2) + ' días de salario' + (topeTxt ? ' · ' + topeTxt : '') + '</p>';
+  out.innerHTML = html;
+}
+
 /* expone funciones usadas desde HTML inline */
 Object.assign(window, {
   irTab, abrirClienteNav, abrirExpedienteNav, abrirContrarioNav, abrirCitaNav,
   abrirDoc, compartirDoc, cambiarFiltro, pintarResultadosAtajo, refrescar,
-  cerrarSesion, pintarCalidad, irA, cargarTodo
+  cerrarSesion, pintarCalidad, irA, cargarTodo, pintarCalc, calcularIndem
 });
 
 init().catch(e => {
