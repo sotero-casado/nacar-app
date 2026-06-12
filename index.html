@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>NÁCAR Abogados</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="NÁCAR">
+<meta name="theme-color" content="#279C92">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.31.0/dist/tabler-icons.min.css">
+<style>
+  :root {
+    --teal: #279C92;
+    --teal-oscuro: #13615B;
+    --teal-bg: rgba(39, 156, 146, 0.12);
+    --coral: #D85A30;
+    --coral-bg: rgba(216, 90, 48, 0.12);
+    --ambar: #854F0B;
+    --ambar-bg: #FAEEDA;
+    --fondo: #FFFFFF;
+    --fondo-2: #F5F4F0;
+    --texto: #1A1A1A;
+    --texto-2: #5F5E5A;
+    --texto-3: #9A9892;
+    --borde: rgba(0, 0, 0, 0.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fondo: #1C1C1E;
+      --fondo-2: #2C2C2E;
+      --texto: #F2F2F2;
+      --texto-2: #B5B3AD;
+      --texto-3: #807E78;
+      --borde: rgba(255, 255, 255, 0.14);
+      --ambar: #FAC775;
+      --ambar-bg: rgba(239, 159, 39, 0.15);
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--fondo); color: var(--texto); font-size: 15px;
+    display: flex; flex-direction: column;
+    padding-top: env(safe-area-inset-top);
+  }
+  header {
+    display: flex; align-items: center; gap: 11px;
+    padding: 12px 16px; border-bottom: 2px solid var(--teal);
+    flex-shrink: 0;
+  }
+  header .marca { flex: 1; min-width: 0; }
+  header .marca .nombre { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: 2.5px; line-height: 1.15; }
+  header .marca .sub { margin: 0; font-size: 10px; letter-spacing: 3.5px; color: var(--texto-3); }
+  header .estado { font-size: 11px; color: var(--texto-3); text-align: right; max-width: 110px; }
+  #btn-atras {
+    display: none; width: 34px; height: 34px; border: none; border-radius: 50%;
+    background: var(--fondo-2); color: var(--teal); font-size: 17px; flex-shrink: 0;
+    align-items: center; justify-content: center; cursor: pointer;
+  }
+  #btn-ajustes { background: none; border: none; color: var(--texto-3); font-size: 20px; padding: 4px; cursor: pointer; }
+  main { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  nav {
+    display: flex; border-top: 0.5px solid var(--borde); flex-shrink: 0;
+    padding-bottom: env(safe-area-inset-bottom); background: var(--fondo);
+  }
+  nav .tab { flex: 1; text-align: center; padding: 8px 0 6px; color: var(--texto-3); cursor: pointer; border: none; background: none; font-family: inherit; }
+  nav .tab i { font-size: 22px; }
+  nav .tab p { margin: 2px 0 0; font-size: 10px; }
+  nav .tab.activa { color: var(--teal); }
+  nav .tab.activa p { font-weight: 600; }
+
+  .busqueda { position: relative; margin: 14px 16px 4px; }
+  .busqueda i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 16px; color: var(--teal); }
+  .busqueda input {
+    width: 100%; padding: 10px 12px 10px 38px; font-size: 15px; font-family: inherit;
+    border: 0.5px solid var(--borde); border-radius: 12px; background: var(--fondo-2); color: var(--texto);
+    outline: none;
+  }
+  .seccion { margin: 14px 18px 5px; font-size: 11px; letter-spacing: 1px; color: var(--texto-3); font-weight: 600; }
+  .contador { margin: 10px 18px 4px; font-size: 11px; color: var(--texto-3); }
+  .fila { display: flex; align-items: center; gap: 12px; padding: 12px 18px; border-bottom: 0.5px solid var(--borde); cursor: pointer; }
+  .fila .avatar {
+    width: 40px; height: 40px; border-radius: 50%; background: var(--teal); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; flex-shrink: 0;
+  }
+  .fila .avatar.contrario { background: var(--coral-bg); color: var(--coral); font-size: 17px; }
+  .fila .cuerpo { flex: 1; min-width: 0; }
+  .fila .titulo { margin: 0; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fila .detalle { margin: 1px 0 0; font-size: 12px; color: var(--texto-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fila .flecha { color: var(--teal); font-size: 16px; flex-shrink: 0; }
+
+  .tarjeta-exp { padding: 11px 18px; border-bottom: 0.5px solid var(--borde); cursor: pointer; }
+  .tarjeta-exp .linea1 { display: flex; align-items: center; gap: 8px; }
+  .tarjeta-exp .linea1 i { font-size: 17px; color: var(--teal); flex-shrink: 0; }
+  .tarjeta-exp .linea1 p { flex: 1; min-width: 0; margin: 0; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tarjeta-exp .badges { margin: 5px 0 0 25px; display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+  .tarjeta-exp .juz { margin: 4px 0 0 25px; font-size: 11px; color: var(--texto-2); }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 8px; font-weight: 600; }
+  .badge.lleno { background: var(--teal); color: #fff; }
+  .badge.suave { background: var(--teal-bg); color: var(--teal); }
+  .badge.gris { background: var(--fondo-2); color: var(--texto-2); font-weight: 400; }
+  .badge.ambar { background: var(--ambar-bg); color: var(--ambar); }
+  .mini { font-size: 11px; color: var(--texto-3); }
+
+  .cabecera-ficha { background: var(--teal-bg); padding: 16px 18px 14px; }
+  .cabecera-ficha.contrario { background: var(--coral-bg); }
+  .cabecera-ficha .fila-id { display: flex; align-items: center; gap: 13px; }
+  .cabecera-ficha .avatar-g {
+    width: 50px; height: 50px; border-radius: 50%; background: var(--teal); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; flex-shrink: 0;
+  }
+  .cabecera-ficha .avatar-g.cuadrado { border-radius: 12px; font-size: 22px; }
+  .cabecera-ficha .avatar-g.coral { background: var(--coral); }
+  .cabecera-ficha h2 { margin: 0; font-size: 16px; font-weight: 600; }
+  .cabecera-ficha .sub { margin: 1px 0 0; font-size: 12px; color: var(--texto-2); }
+  .acciones { display: flex; gap: 8px; margin-top: 13px; }
+  .acciones a {
+    flex: 1; text-align: center; padding: 9px; font-size: 13px; font-weight: 600;
+    border-radius: 10px; text-decoration: none; border: 1px solid var(--teal);
+  }
+  .acciones a.lleno { background: var(--teal); color: #fff; }
+  .acciones a.hueco { color: var(--teal); }
+  .tabla-datos { width: 100%; font-size: 12px; margin-top: 10px; border-collapse: collapse; }
+  .tabla-datos td { padding: 3px 0; vertical-align: top; }
+  .tabla-datos td:first-child { color: var(--texto-2); width: 76px; }
+  .enlace { color: var(--teal); font-weight: 600; cursor: pointer; }
+  .enlace.coral { color: var(--coral); }
+
+  .fila-doc { display: flex; align-items: center; gap: 9px; padding: 9px 18px; border-bottom: 0.5px solid var(--borde); }
+  .fila-doc > i { font-size: 16px; color: var(--teal); flex-shrink: 0; }
+  .fila-doc .nombre-doc { margin: 0; font-size: 12px; flex: 1; min-width: 0; cursor: pointer; }
+  .fila-doc .nombre-doc p { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fila-doc .nombre-doc .origen { font-size: 10px; color: var(--texto-3); }
+  .fila-doc .btn-doc { background: none; border: none; color: var(--texto-3); font-size: 17px; padding: 4px 6px; cursor: pointer; flex-shrink: 0; }
+
+  .tarjeta-cita { margin: 0 14px 8px; border: 0.5px solid var(--borde); border-radius: 12px; padding: 10px 12px; cursor: pointer; display: flex; gap: 10px; align-items: flex-start; }
+  .tarjeta-cita .icono-tipo { flex-shrink: 0; width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+  .tarjeta-cita .icono-tipo i { font-size: 18px; }
+  .tarjeta-cita .cuerpo { flex: 1; min-width: 0; }
+  .tarjeta-cita .linea1 { display: flex; align-items: center; gap: 6px; }
+  .tarjeta-cita .linea1 p { margin: 0; font-size: 13px; font-weight: 600; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tarjeta-cita .hora { font-size: 11px; padding: 1px 7px; border-radius: 7px; font-weight: 600; flex-shrink: 0; }
+  .tarjeta-cita .sub { margin: 2px 0 0; font-size: 11px; color: var(--texto-2); }
+  .tarjeta-cita .aviso-linea { margin: 3px 0 0; font-size: 11px; color: var(--ambar); }
+
+  .caja-aviso { margin: 0 14px 8px; background: var(--ambar-bg); border-radius: 12px; padding: 10px 12px; }
+  .caja-aviso p { margin: 0 0 4px; font-size: 12px; color: var(--ambar); }
+  .caja-aviso p:first-child { font-weight: 600; }
+  .caja-aviso p:last-child { margin-bottom: 0; }
+  .caja-info { display: flex; align-items: center; gap: 8px; margin: 14px 16px 4px; padding: 9px 12px; background: var(--teal-bg); border-radius: 12px; }
+  .caja-info i { font-size: 15px; color: var(--teal); flex-shrink: 0; }
+  .caja-info p { margin: 0; font-size: 11px; color: var(--texto-2); }
+
+  .metricas { display: flex; gap: 8px; margin: 12px 14px; }
+  .metrica { flex: 1; background: var(--fondo-2); border-radius: 12px; padding: 10px 4px; text-align: center; }
+  .metrica .num { margin: 0; font-size: 20px; font-weight: 600; color: var(--teal); }
+  .metrica .lbl { margin: 0; font-size: 10px; color: var(--texto-2); }
+  .metrica.ambar .num { color: var(--ambar); }
+
+  .chips { display: flex; gap: 6px; padding: 12px 14px 4px; flex-wrap: wrap; }
+  .chip { font-size: 12px; padding: 5px 11px; border-radius: 14px; cursor: pointer; border: none; font-family: inherit; background: var(--fondo-2); color: var(--texto-2); }
+  .chip.activo { background: var(--teal); color: #fff; font-weight: 600; }
+
+  .atajos { display: flex; gap: 8px; margin: 12px 14px; }
+  .atajo { flex: 1; border: 0.5px solid var(--borde); border-radius: 12px; padding: 14px 8px; text-align: center; cursor: pointer; background: none; font-family: inherit; color: var(--texto); }
+  .atajo i { font-size: 20px; color: var(--teal); }
+  .atajo .t { margin: 4px 0 0; font-size: 12px; font-weight: 600; }
+  .atajo .s { margin: 0; font-size: 10px; color: var(--texto-3); }
+
+  .pantalla-login { text-align: center; padding: 60px 30px; }
+  .pantalla-login .nombre { font-size: 20px; font-weight: 600; letter-spacing: 3px; margin: 10px 0 0; }
+  .pantalla-login .sub { font-size: 11px; letter-spacing: 3.5px; color: var(--texto-3); margin: 0 0 30px; }
+  .boton-principal {
+    display: inline-block; background: var(--teal); color: #fff; border: none; border-radius: 12px;
+    padding: 13px 26px; font-size: 15px; font-weight: 600; font-family: inherit; cursor: pointer;
+  }
+  .boton-secundario {
+    display: inline-block; background: none; color: var(--teal); border: 1px solid var(--teal); border-radius: 12px;
+    padding: 11px 22px; font-size: 14px; font-family: inherit; cursor: pointer; margin-top: 12px;
+  }
+  .nota { font-size: 12px; color: var(--texto-3); margin-top: 18px; line-height: 1.5; }
+  .vacio { padding: 30px 24px; text-align: center; font-size: 13px; color: var(--texto-3); }
+  .cargando { padding: 40px; text-align: center; color: var(--texto-3); font-size: 13px; }
+  .fila-ajuste { display: flex; align-items: center; gap: 12px; padding: 13px 18px; border-bottom: 0.5px solid var(--borde); }
+  .fila-ajuste i { font-size: 19px; color: var(--teal); flex-shrink: 0; }
+  .fila-ajuste .cuerpo { flex: 1; min-width: 0; }
+  .fila-ajuste .t { margin: 0; font-size: 14px; font-weight: 600; }
+  .fila-ajuste .s { margin: 1px 0 0; font-size: 12px; color: var(--texto-2); }
+  .saludo { padding: 16px 18px 4px; }
+  .saludo h1 { margin: 0; font-size: 19px; font-weight: 600; }
+  .saludo p { margin: 2px 0 0; font-size: 12px; color: var(--texto-2); }
+  .boton-linea { margin: 4px 14px 16px; text-align: center; padding: 10px; border: 0.5px solid var(--borde); border-radius: 12px; cursor: pointer; background: none; width: calc(100% - 28px); font-family: inherit; }
+  .boton-linea p { margin: 0; font-size: 12px; color: var(--teal); font-weight: 600; }
+
+  /* ---------- iPhone en horizontal: pestañas a la izquierda ---------- */
+  @media (orientation: landscape) and (max-height: 540px) {
+    body {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      grid-template-columns: 86px 1fr;
+      grid-template-areas: "hdr hdr" "nav main";
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
+    }
+    header { grid-area: hdr; padding: 7px 16px; }
+    header svg { width: 24px; height: 27px; }
+    header .marca .nombre { font-size: 14px; letter-spacing: 2px; }
+    header .marca .sub { font-size: 9px; letter-spacing: 2.5px; }
+    main { grid-area: main; }
+    nav {
+      grid-area: nav; flex-direction: column; justify-content: flex-start;
+      gap: 4px; border-top: none; border-right: 0.5px solid var(--borde);
+      padding: 10px 0 10px; overflow-y: auto;
+    }
+    nav .tab { flex: 0 0 auto; padding: 9px 0; }
+    nav .tab i { font-size: 20px; }
+    .metricas { max-width: 560px; }
+    .tarjeta-cita, .caja-aviso, .caja-info { max-width: 640px; }
+    .cabecera-ficha .acciones { max-width: 420px; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <button id="btn-atras" aria-label="Volver"><i class="ti ti-arrow-left"></i></button>
+    <svg viewBox="0 0 40 44" width="32" height="35" role="img" aria-label="Nácar Abogados">
+      <path d="M13 6 V30" stroke="#279C92" stroke-width="4.5" fill="none"/>
+      <path d="M13 14 L27 38" stroke="#279C92" stroke-width="4.5" fill="none"/>
+      <path d="M27 14 V38" stroke="#279C92" stroke-width="4.5" fill="none"/>
+    </svg>
+    <div class="marca">
+      <p class="nombre">NÁCAR</p>
+      <p class="sub">ABOGADOS</p>
+    </div>
+    <p class="estado" id="hdr-estado">Cargando...</p>
+    <button id="btn-ajustes" aria-label="Ajustes"><i class="ti ti-settings"></i></button>
+  </header>
+
+  <main id="contenido"><div class="cargando">Iniciando la aplicación...</div></main>
+
+  <nav id="barra-tabs">
+    <button class="tab" data-tab="hoy"><i class="ti ti-home"></i><p>Hoy</p></button>
+    <button class="tab" data-tab="buscar"><i class="ti ti-search"></i><p>Buscar</p></button>
+    <button class="tab" data-tab="agenda"><i class="ti ti-calendar"></i><p>Agenda</p></button>
+  </nav>
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.28.1/lib/msal-browser.min.js"></script>
+  <script src="config.js?v=2"></script>
+  <script src="demo-data.js?v=2"></script>
+  <script src="app.js?v=2"></script>
+</body>
+</html>
