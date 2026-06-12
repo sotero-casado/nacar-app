@@ -472,8 +472,8 @@ function htmlCita(c, idx) {
     '<div class="icono-tipo" style="background:' + es.bg + ';"><i class="ti ' + es.icono + '" style="color:' + es.color + ';"></i></div>' +
     '<div class="cuerpo"><div class="linea1"><p>' + esc(c.titulo) + '</p>' +
     '<span class="hora" style="background:' + es.bg + ';color:' + es.color + ';">' + fmtHora(c.inicio) + '</span></div>' +
-    '<p class="sub">' + etiquetaTipo(c.tipo) + (c.cliente ? " · " + esc(c.cliente) : "") +
-    (c.numexp ? " · Exp " + esc(c.numexp) : "") + (expI >= 0 && EXPS[expI].e.autos ? " · Autos " + esc(EXPS[expI].e.autos) : "") + '</p>' +
+    '<p class="sub">' + [c.cliente ? esc(c.cliente) : "", expI >= 0 && EXPS[expI].e.autos ? "Autos " + esc(EXPS[expI].e.autos) : ""].filter(Boolean).join(" · ") + '</p>' +
+    (expI >= 0 && EXPS[expI].e.juzgado ? '<p class="sub"><i class="ti ti-building-bank" style="font-size:12px;"></i> ' + esc(EXPS[expI].e.juzgado) + '</p>' : "") +
     (finde ? '<p class="aviso-linea"><i class="ti ti-alert-triangle" style="font-size:12px;"></i> Cae en fin de semana</p>' : "") +
     '</div></div>';
 }
