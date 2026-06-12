@@ -207,7 +207,7 @@
       padding-right: env(safe-area-inset-right);
     }
     header { grid-area: hdr; padding: 7px 16px; }
-    header svg { width: 24px; height: 27px; }
+    header #logo-cabecera { width: 22px !important; }
     header .marca .nombre { font-size: 14px; letter-spacing: 2px; }
     header .marca .sub { font-size: 9px; letter-spacing: 2.5px; }
     main { grid-area: main; }
@@ -227,11 +227,7 @@
 <body>
   <header>
     <button id="btn-atras" aria-label="Volver"><i class="ti ti-arrow-left"></i></button>
-    <svg viewBox="0 0 40 44" width="32" height="35" role="img" aria-label="Nácar Abogados">
-      <path d="M13 6 V30" stroke="#279C92" stroke-width="4.5" fill="none"/>
-      <path d="M13 14 L27 38" stroke="#279C92" stroke-width="4.5" fill="none"/>
-      <path d="M27 14 V38" stroke="#279C92" stroke-width="4.5" fill="none"/>
-    </svg>
+    <img src="logo-n.png?v=3" alt="Nácar Abogados" style="width: 30px; height: auto;" id="logo-cabecera" />
     <div class="marca">
       <p class="nombre">NÁCAR</p>
       <p class="sub">ABOGADOS</p>
@@ -250,8 +246,8 @@
 
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.28.1/lib/msal-browser.min.js"></script>
-  <script src="config.js?v=2"></script>
-  <script src="demo-data.js?v=2"></script>
-  <script src="app.js?v=2"></script>
+  <script src="config.js?v=3"></script>
+  <script src="demo-data.js?v=3"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>

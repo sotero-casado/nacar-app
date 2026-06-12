@@ -421,8 +421,7 @@ async function cargarTodo() {
 function pintarLogin() {
   ponerEstado("Sin sesión");
   pintar('<div class="pantalla-login">' +
-    '<svg viewBox="0 0 40 44" width="56" height="62"><path d="M13 6 V30" stroke="#279C92" stroke-width="4.5" fill="none"/><path d="M13 14 L27 38" stroke="#279C92" stroke-width="4.5" fill="none"/><path d="M27 14 V38" stroke="#279C92" stroke-width="4.5" fill="none"/></svg>' +
-    '<p class="nombre">NÁCAR</p><p class="sub">ABOGADOS</p>' +
+    '<img src="logo-completo.png?v=3" alt="Nácar Abogados" style="width: 150px; height: auto;" />' +
     '<button class="boton-principal" id="btn-login"><i class="ti ti-brand-windows" style="vertical-align:-2px;"></i> Entrar con la cuenta del despacho</button>' +
     '<p class="nota">Acceso de solo lectura.<br>Los datos nunca salen de tu Microsoft 365.</p></div>');
   document.getElementById("btn-login").addEventListener("click", () =>
