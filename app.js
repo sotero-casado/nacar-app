@@ -1011,9 +1011,11 @@ function calcularIndem() {
   if (tipo === "improcedente") {
     const corte = new Date(2012, 1, 12);
     if (inicio < corte) {
-      const m1 = mesesIndem(inicio, new Date(2012, 1, 11));
+      const finT1 = fin < corte ? fin : new Date(2012, 1, 11);
+      const m1 = mesesIndem(inicio, finT1);
       const m2 = fin >= corte ? mesesIndem(corte, fin) : 0;
       const d1 = m1 * 3.75, d2 = m2 * 2.75;
+      filas.push(["Antigüedad total", mesesIndem(inicio, fin) + " meses"]);
       filas.push(["Tramo 1 (hasta 11-02-2012, 45 d/año)", m1 + " meses × 3,75 = " + d1.toFixed(2) + " días"]);
       filas.push(["Tramo 2 (desde 12-02-2012, 33 d/año)", m2 + " meses × 2,75 = " + d2.toFixed(2) + " días"]);
       if (d1 >= 720) {
