@@ -501,7 +501,6 @@ function pintarHoy() {
   const finSemana = new Date(ahora); finSemana.setDate(finSemana.getDate() + (7 - finSemana.getDay()) % 7 + 1);
   const semanaJ = CITAS.filter(c => c.tipo === "juicio" && c.inicio >= ahora && c.inicio < finSemana);
   const totalJ = CITAS.filter(c => c.tipo === "juicio" && c.inicio >= ahora);
-  const avisos = calcularAvisos();
   let html = '<div class="saludo"><h1>' + saludoHora() + (FUENTE.usuario ? ", " + esc(FUENTE.usuario) : "") + '</h1>' +
     '<p>' + fmtDia(ahora) + " de " + ahora.getFullYear() + '</p></div>' +
     '<div class="metricas">' +
@@ -509,10 +508,6 @@ function pintarHoy() {
     '<div class="metrica' + (hoyP.length ? " ambar" : "") + '"><p class="num">' + hoyP.length + '</p><p class="lbl">plazos hoy</p></div>' +
     '<div class="metrica"><p class="num">' + semanaJ.length + '</p><p class="lbl">juicios esta semana</p></div>' +
     '<div class="metrica"><p class="num">' + totalJ.length + '</p><p class="lbl">en ' + (CFG.diasCalendario || 90) + ' días</p></div></div>';
-  if (avisos.length) {
-    html += '<div class="caja-aviso"><p><i class="ti ti-alert-triangle" style="font-size:13px;"></i> ' + avisos.length + ' aviso' + (avisos.length > 1 ? "s" : "") + '</p>' +
-      avisos.slice(0, 4).map(a => "<p>" + esc(a) + "</p>").join("") + '</div>';
-  }
   const proximas = CITAS.filter(c => c.inicio >= ahora && c.esMN).slice(0, 8);
   if (proximas.length) {
     html += '<p class="seccion">PRÓXIMAS CITAS</p>';
