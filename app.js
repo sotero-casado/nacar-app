@@ -83,10 +83,15 @@ function clasificarCita(asunto, cuerpo, inicio, fin) {
   let numexp = "";
   const me = /Expediente:\s*([\d]+\/[\d]+)/.exec(cuerpo || "");
   if (me) numexp = me[1];
+  // contrario: en el asunto del juicio suele venir tras "/" o " - "
+  // (p. ej. "JUICIO MARKTEL / JONNY EDUARDO REVOLLEDO VILLAVICENCIO")
+  let contrario = "";
+  const mco = /\s[\/\-]\s+(.+)$/.exec(resto);
+  if (mco) contrario = mco[1].trim();
   let ciudad = "";
   const mc = /^([A-Za-zÀ-ÿ.\s]{3,25}?)[\r\n]/.exec(cuerpo || "");
   if (mc && mc[1].indexOf("<<<") < 0) ciudad = mc[1].trim();
-  return { inicio, fin, tipo, titulo: resto, cliente, numexp, ciudad, esMN };
+  return { inicio, fin, tipo, titulo: resto, cliente, numexp, contrario, ciudad, esMN };
 }
 function etiquetaTipo(t) {
   return { juicio: "Juicio", plazo: "Plazo", confesion: "Confesión", vencimiento: "Vencimiento", otra: "Otra cita" }[t] || t;
@@ -109,16 +114,31 @@ function ciudadDeCita(c) {
   return "";
 }
 function expedienteDeCita(c) {
-  if (!c.numexp) return -1;
-  const candidatos = [];
-  for (let i = 0; i < EXPS.length; i++) {
-    if (EXPS[i].e.numexp === c.numexp) {
-      if (c.cliente && norm(EXPS[i].cliente) === norm(c.cliente)) return i;
-      candidatos.push(i);
+  const cli = c.cliente ? norm(c.cliente) : "";
+  // candidatos por referencia de expediente + cliente
+  const cands = [];
+  if (c.numexp) {
+    for (let i = 0; i < EXPS.length; i++) {
+      if (EXPS[i].e.numexp === c.numexp && (!cli || norm(EXPS[i].cliente) === cli)) cands.push(i);
     }
   }
-  // sin cliente que coincida: solo es fiable si la referencia no está repetida
-  return (!c.cliente && candidatos.length === 1) ? candidatos[0] : -1;
+  // La referencia "2024/2024" es genérica y la comparten muchos expedientes;
+  // si tenemos el contrario (del asunto del juicio) es la clave fiable.
+  const con = c.contrario ? norm(c.contrario) : "";
+  if (con) {
+    const tk = con.split(/\s+/).filter(w => w.length >= 4);
+    const coincide = i => {
+      const ec = norm(EXPS[i].e.contrario || "");
+      if (!ec) return false;
+      const h = tk.filter(w => ec.indexOf(w) >= 0).length;
+      return h >= 2 || (tk.length === 1 && h === 1);
+    };
+    const enCands = cands.filter(coincide);
+    if (enCands.length) return enCands[0];
+    if (cli) { for (let i = 0; i < EXPS.length; i++) if (norm(EXPS[i].cliente) === cli && coincide(i)) return i; }
+  }
+  // sin contrario: la referencia solo es fiable si es inequívoca
+  return cands.length === 1 ? cands[0] : -1;
 }
 
 /* ---------- avisos ---------- */
