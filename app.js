@@ -285,6 +285,29 @@ function descCoincide(nombreSub, desc) {
   const d = (desc || "").toLowerCase();
   return !!resto && !!d && (resto.indexOf(d) >= 0 || d.indexOf(resto) >= 0);
 }
+// nº de autos distintos (formato LexNET AAAA_NNNNNNN) presentes en una lista de ficheros
+function autosDistintos(files) {
+  const set = new Set();
+  files.forEach(f => { const m = /(\d{4})_(\d{7})_/.exec(f.n || ""); if (m) set.add(m[1] + m[2]); });
+  return set.size;
+}
+// Algunas carpetas de MN son "cajones" con documentos de MUCHOS trabajadores
+// (p. ej. ExpCantidad de MARKTEL, 161 ficheros). Si la carpeta mezcla varios
+// autos, devolvemos solo los documentos de ESTE expediente (por nº de autos o
+// por el nombre del contrario); si es una carpeta dedicada, devolvemos todo.
+function filtrarDocsExpediente(files, e) {
+  if (autosDistintos(files) < 3) return files;
+  const tok = lexnetToken(e.autos);
+  const apellidos = norm(e.contrario || "").split(/\s+/).filter(w => w.length >= 4);
+  return files.filter(f => {
+    if (tok && f.n.indexOf(tok) >= 0) return true;
+    if (apellidos.length >= 2) {
+      const n = norm(f.n);
+      if (apellidos.filter(w => n.indexOf(w) >= 0).length >= 2) return true;
+    }
+    return false;
+  });
+}
 async function asegurarCarpetas() {
   if (mapaCarpetas) return;
   const cache = localStorage.getItem("nacar_carpetas2");
@@ -341,7 +364,8 @@ async function cargarDocsExpediente(c, e) {
   if (e._subcarpeta && e._subRuta) {
     try {
       const items = await graphTodos("/me/drive/root:/" + e._subRuta + "/" + encodeURIComponent(e._subcarpeta) + ":/children?$top=500&$select=name,file,webUrl");
-      e._docs = items.filter(i => i.file).map(i => ({ n: i.name, url: i.webUrl }));
+      const todos = items.filter(i => i.file).map(i => ({ n: i.name, url: i.webUrl }));
+      e._docs = filtrarDocsExpediente(todos, e);
       if (e._docs.length) return;
     } catch (err) { /* sigue al fallback por autos */ }
   }
@@ -356,7 +380,8 @@ async function cargarDocsExpediente(c, e) {
       const hit = hits.find(h => h.file && h.name.indexOf(tok) >= 0 && h.parentReference && h.parentReference.id);
       if (hit) {
         const items = await graphTodos("/me/drive/items/" + hit.parentReference.id + "/children?$top=500&$select=name,file,webUrl");
-        e._docs = items.filter(i => i.file).map(i => ({ n: i.name, url: i.webUrl }));
+        const todos = items.filter(i => i.file).map(i => ({ n: i.name, url: i.webUrl }));
+        e._docs = filtrarDocsExpediente(todos, e);
         if (hit.parentReference.name) e._subcarpeta = hit.parentReference.name;
         if (e._docs.length) return;
       }
