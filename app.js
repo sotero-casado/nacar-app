@@ -43,6 +43,11 @@ function iconoDoc(f) {
   if (/\.(jpe?g|png|gif|heic)$/.test(e)) return "ti-photo";
   return "ti-file";
 }
+function fmtFecha(s) {
+  if (!s) return "";
+  const d = new Date(s);
+  return isNaN(d) ? "" : d.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
 function fmtDia(d) {
   return d.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })
     .replace(/^./, c => c.toUpperCase());
@@ -335,10 +340,10 @@ async function cargarDocsCliente(c) {
     const ruta = encodeURIComponent(BASE_MN() + "/Usu2/" + carpeta);
     c._rutas.push(ruta);
     let items = [];
-    try { items = await graphTodos("/me/drive/root:/" + ruta + ":/children?$top=500&$select=name,file,folder,webUrl"); }
+    try { items = await graphTodos("/me/drive/root:/" + ruta + ":/children?$top=500&$select=name,file,folder,webUrl,createdDateTime,lastModifiedDateTime"); }
     catch (e) { continue; }
     items.forEach(i => {
-      if (i.file) c._rootDocs.push({ n: i.name, url: i.webUrl });
+      if (i.file) c._rootDocs.push({ n: i.name, url: i.webUrl, f: i.createdDateTime || i.lastModifiedDateTime });
       else if (i.folder) subs.push({ name: i.name, ruta, usada: false });
     });
   }
@@ -363,8 +368,8 @@ async function cargarDocsExpediente(c, e) {
   // 1) subcarpeta ya emparejada por nombre
   if (e._subcarpeta && e._subRuta) {
     try {
-      const items = await graphTodos("/me/drive/root:/" + e._subRuta + "/" + encodeURIComponent(e._subcarpeta) + ":/children?$top=500&$select=name,file,webUrl");
-      const todos = items.filter(i => i.file).map(i => ({ n: i.name, url: i.webUrl }));
+      const items = await graphTodos("/me/drive/root:/" + e._subRuta + "/" + encodeURIComponent(e._subcarpeta) + ":/children?$top=500&$select=name,file,webUrl,createdDateTime,lastModifiedDateTime");
+      const todos = items.filter(i => i.file).map(i => ({ n: i.name, url: i.webUrl, f: i.createdDateTime || i.lastModifiedDateTime }));
       e._docs = filtrarDocsExpediente(todos, e);
       if (e._docs.length) return;
     } catch (err) { /* sigue al fallback por autos */ }
@@ -379,8 +384,8 @@ async function cargarDocsExpediente(c, e) {
       catch (err) { continue; }
       const hit = hits.find(h => h.file && h.name.indexOf(tok) >= 0 && h.parentReference && h.parentReference.id);
       if (hit) {
-        const items = await graphTodos("/me/drive/items/" + hit.parentReference.id + "/children?$top=500&$select=name,file,webUrl");
-        const todos = items.filter(i => i.file).map(i => ({ n: i.name, url: i.webUrl }));
+        const items = await graphTodos("/me/drive/items/" + hit.parentReference.id + "/children?$top=500&$select=name,file,webUrl,createdDateTime,lastModifiedDateTime");
+        const todos = items.filter(i => i.file).map(i => ({ n: i.name, url: i.webUrl, f: i.createdDateTime || i.lastModifiedDateTime }));
         e._docs = filtrarDocsExpediente(todos, e);
         if (hit.parentReference.name) e._subcarpeta = hit.parentReference.name;
         if (e._docs.length) return;
@@ -658,14 +663,14 @@ function pintarResultados(f) {
     const lista = x.e._docs || x.e.d || [];
     lista.forEach(d => {
       const nombre = d.n || d;
-      if (nombre.toLowerCase().indexOf(f) >= 0) docs.push({ nombre, i });
+      if (nombre.toLowerCase().indexOf(f) >= 0) docs.push({ nombre, i, f: d.f });
     });
   });
   if (docs.length) {
     html += '<p class="seccion">DOCUMENTOS (EN EXPEDIENTES YA ABIERTOS)</p>';
     docs.slice(0, 8).forEach(o => {
       html += '<div class="fila-doc" style="cursor:pointer;" onclick="abrirExpedienteNav(' + o.i + ')"><i class="ti ' + iconoDoc(o.nombre) + '"></i>' +
-        '<div class="nombre-doc"><p>' + esc(o.nombre) + '</p><p class="origen">' + esc(EXPS[o.i].e.desc) + " · " + esc(EXPS[o.i].cliente) + '</p></div></div>';
+        '<div class="nombre-doc"><p>' + esc(o.nombre) + '</p><p class="origen">' + (o.f ? fmtFecha(o.f) + " · " : "") + esc(EXPS[o.i].e.desc) + " · " + esc(EXPS[o.i].cliente) + '</p></div></div>';
     });
   }
   // búsqueda de documentos en todo OneDrive (por nombre y por texto interno)
@@ -683,7 +688,7 @@ async function buscarDocsOneDrive(f) {
   const ruta = encodeURIComponent(BASE_MN());
   let hits = [];
   try {
-    hits = await graphTodos("/me/drive/root:/" + ruta + ":/search(q='" + f.replace(/'/g, "''") + "')?$top=40&$select=name,webUrl,file,parentReference");
+    hits = await graphTodos("/me/drive/root:/" + ruta + ":/search(q='" + f.replace(/'/g, "''") + "')?$top=40&$select=name,webUrl,file,parentReference,createdDateTime,lastModifiedDateTime");
   } catch (e) { /* sin resultados */ }
   if (seq !== _odSeq) return;            // ya hay una búsqueda más reciente
   const cont = document.getElementById("docs-od");
@@ -696,8 +701,9 @@ async function buscarDocsOneDrive(f) {
   let html = '<p class="seccion">DOCUMENTOS EN ONEDRIVE (' + docs.length + (docs.length >= 40 ? "+" : "") + ')</p>';
   docs.forEach(d => {
     const carpeta = (d.parentReference && d.parentReference.name) || "";
+    const fec = fmtFecha(d.createdDateTime || d.lastModifiedDateTime);
     html += '<div class="fila-doc" style="cursor:pointer;" onclick="abrirDocUrl(\'' + encodeURIComponent(d.webUrl || "") + '\')"><i class="ti ' + iconoDoc(d.name) + '"></i>' +
-      '<div class="nombre-doc"><p>' + esc(d.name) + '</p><p class="origen">' + esc(carpeta) + '</p></div>' +
+      '<div class="nombre-doc"><p>' + esc(d.name) + '</p><p class="origen">' + (fec ? fec + " · " : "") + esc(carpeta) + '</p></div>' +
       '<i class="ti ti-external-link" style="color:var(--texto-3);font-size:15px;flex-shrink:0;"></i></div>';
   });
   html += '<p class="contador">Busca en el nombre y en el texto interno de los documentos. Los PDF escaneados sin OCR solo se encuentran por el nombre.</p>';
@@ -803,7 +809,8 @@ function htmlDoc(d, cliente) {
   const id = "d" + Math.random().toString(36).slice(2, 9);
   window["__" + id] = { d, cliente };
   return '<div class="fila-doc"><i class="ti ' + iconoDoc(d.n) + '"></i>' +
-    '<div class="nombre-doc" onclick="abrirDoc(\'' + id + '\')"><p>' + esc(d.n) + '</p></div>' +
+    '<div class="nombre-doc" onclick="abrirDoc(\'' + id + '\')"><p>' + esc(d.n) + '</p>' +
+    (d.f ? '<p class="origen"><i class="ti ti-calendar-event" style="font-size:11px;vertical-align:-1px;"></i> ' + fmtFecha(d.f) + '</p>' : '') + '</div>' +
     '<button class="btn-doc" aria-label="Compartir" onclick="compartirDoc(\'' + id + '\')"><i class="ti ti-share-2"></i></button></div>';
 }
 function abrirDoc(id) {
