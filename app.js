@@ -918,13 +918,25 @@ function cerrarSesion() {
    - Temporal: días naturales x coeficiente DT 8ª ET (8 a 12 d/año), sin prorrateo
    ============================================================ */
 const FMT_EUR = new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" });
+// Meses indemnizatorios (Guía CGPJ pág. 5): fecha de efectos INCLUSIVE y los días
+// que excedan de un mes completo cuentan como un mes entero. Cálculo con enteros
+// año/mes/día para que sea inmune a la zona horaria y a los cambios de hora.
 function mesesIndem(inicio, finInclusive) {
-  const fin = new Date(finInclusive.getTime() + 86400000);
-  let meses = (fin.getFullYear() - inicio.getFullYear()) * 12 + (fin.getMonth() - inicio.getMonth());
-  let resto = fin.getDate() - inicio.getDate();
-  if (resto < 0) { meses--; resto = 1; }
+  let y = finInclusive.getFullYear(), m = finInclusive.getMonth(), d = finInclusive.getDate() + 1;
+  const diasMes = new Date(y, m + 1, 0).getDate();
+  if (d > diasMes) { d = 1; m++; if (m > 11) { m = 0; y++; } }
+  let meses = (y - inicio.getFullYear()) * 12 + (m - inicio.getMonth());
+  const resto = d - inicio.getDate();
+  if (resto < 0) meses--;
   if (meses < 0) return 0;
-  return meses + (resto > 0 ? 1 : 0);
+  return meses + (resto !== 0 ? 1 : 0);
+}
+// lee un <input type="date"> como fecha local exacta (evita líos UTC de valueAsDate)
+function fechaCampo(id) {
+  const v = document.getElementById(id).value;
+  if (!v) return null;
+  const p = v.split("-").map(Number);
+  return new Date(p[0], p[1] - 1, p[2]);
 }
 function pintarCalc() {
   ponerEstado("Calculadora");
@@ -955,8 +967,8 @@ function pintarCalc() {
 }
 function calcularIndem() {
   const tipo = document.getElementById("c-tipo").value;
-  const inicio = document.getElementById("c-inicio").valueAsDate;
-  const fin = document.getElementById("c-fin").valueAsDate;
+  const inicio = fechaCampo("c-inicio");
+  const fin = fechaCampo("c-fin");
   const importe = parseFloat(document.getElementById("c-salario").value);
   const unidad = document.getElementById("c-unidad").value;
   const pagas = parseInt(document.getElementById("c-pagas").value, 10);
