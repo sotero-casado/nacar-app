@@ -271,55 +271,98 @@ async function cargarCalendario() {
 }
 
 /* ---------- documentos de OneDrive ---------- */
+const BASE_MN = () => (CFG.carpetaMN || "DOCS-MNPROGRAM_81002");
 let mapaCarpetas = null;
+// número de autos -> token que MN/LexNET usa en los nombres de fichero
+// "376/2025" -> "2025_0000376" ; "0000363/2024" -> "2024_0000363"
+function lexnetToken(autos) {
+  const m = /(\d+)\s*\/\s*(\d{4})/.exec(autos || "");
+  if (!m) return null;
+  return m[2] + "_" + m[1].replace(/^0+/, "").padStart(7, "0");
+}
+function descCoincide(nombreSub, desc) {
+  const resto = nombreSub.replace(/^Exp\d*/, "").trim().toLowerCase();
+  const d = (desc || "").toLowerCase();
+  return !!resto && !!d && (resto.indexOf(d) >= 0 || d.indexOf(resto) >= 0);
+}
 async function asegurarCarpetas() {
   if (mapaCarpetas) return;
-  const cache = localStorage.getItem("nacar_carpetas");
+  const cache = localStorage.getItem("nacar_carpetas2");
   if (cache) {
     const j = JSON.parse(cache);
     if (Date.now() - j.t < 86400000) { mapaCarpetas = j.m; return; }
   }
-  const ruta = encodeURIComponent(CFG.carpetaMN || "DOCS-MNPROGRAM_81002");
+  const ruta = encodeURIComponent(BASE_MN());
   const items = await graphTodos("/me/drive/root:/" + ruta + "/Usu2:/children?$top=999&$select=name,folder");
   mapaCarpetas = {};
-  items.forEach(i => { if (i.folder && !(norm(i.name) in mapaCarpetas)) mapaCarpetas[norm(i.name)] = i.name; });
-  localStorage.setItem("nacar_carpetas", JSON.stringify({ t: Date.now(), m: mapaCarpetas }));
+  // un mismo cliente puede tener VARIAS carpetas con el mismo nombre normalizado
+  items.forEach(i => { if (i.folder) { const k = norm(i.name); (mapaCarpetas[k] = mapaCarpetas[k] || []).push(i.name); } });
+  localStorage.setItem("nacar_carpetas2", JSON.stringify({ t: Date.now(), m: mapaCarpetas }));
 }
 async function cargarDocsCliente(c) {
   if (c._docsCargados || MODO_DEMO) return;
   await asegurarCarpetas();
-  const carpeta = mapaCarpetas[norm(c.n)];
   c._docsCargados = true;
-  if (!carpeta) { c._sinCarpeta = true; return; }
-  const ruta = encodeURIComponent((CFG.carpetaMN || "DOCS-MNPROGRAM_81002") + "/Usu2/" + carpeta);
-  const items = await graphTodos("/me/drive/root:/" + ruta + ":/children?$top=500");
-  const subcarpetas = items.filter(i => i.folder).map(i => ({ name: i.name, usada: false }));
-  c._rootDocs = items.filter(i => i.file).map(i => ({ n: i.name, url: i.webUrl }));
-  c._ruta = ruta;
-  // emparejar cada expediente con su subcarpeta (por código exacto o por descripción)
+  const carpetas = mapaCarpetas[norm(c.n)] || [];
+  if (!carpetas.length) { c._sinCarpeta = true; return; }
+  c._rutas = [];
+  c._rootDocs = [];
+  const subs = [];
+  for (const carpeta of carpetas) {
+    const ruta = encodeURIComponent(BASE_MN() + "/Usu2/" + carpeta);
+    c._rutas.push(ruta);
+    let items = [];
+    try { items = await graphTodos("/me/drive/root:/" + ruta + ":/children?$top=500&$select=name,file,folder,webUrl"); }
+    catch (e) { continue; }
+    items.forEach(i => {
+      if (i.file) c._rootDocs.push({ n: i.name, url: i.webUrl });
+      else if (i.folder) subs.push({ name: i.name, ruta, usada: false });
+    });
+  }
+  // Emparejar por NOMBRE solo cuando es fiable: 1) código exacto Exp{año}{num};
+  // 2) descripción con un único candidato (evita asignar mal en empresas con
+  // decenas de carpetas "Despido"). El resto se resuelve por nº de autos al abrir.
   c.exps.forEach(e => {
     if (e.desc === "Documentación general") return;
     let elegida = null;
     const me = /^(\d+)\/(\d{4})$/.exec(e.numexp || "");
-    if (me) {
-      elegida = subcarpetas.find(s => !s.usada && new RegExp("^Exp" + me[2] + me[1] + "(\\D|$)").test(s.name));
-    }
+    if (me) elegida = subs.find(s => !s.usada && new RegExp("^Exp" + me[2] + me[1] + "(\\D|$)").test(s.name));
     if (!elegida) {
-      elegida = subcarpetas.find(s => {
-        if (s.usada) return false;
-        const resto = s.name.replace(/^Exp\d*/, "").trim().toLowerCase();
-        return resto && (resto.indexOf(e.desc.toLowerCase()) >= 0 || e.desc.toLowerCase().indexOf(resto) >= 0);
-      });
+      const cands = subs.filter(s => !s.usada && descCoincide(s.name, e.desc));
+      if (cands.length === 1) elegida = cands[0];
     }
-    if (elegida) { elegida.usada = true; e._subcarpeta = elegida.name; }
+    if (elegida) { elegida.usada = true; e._subcarpeta = elegida.name; e._subRuta = elegida.ruta; }
   });
-  c._subSueltas = subcarpetas.filter(s => !s.usada).map(s => s.name);
+  c._subSueltas = subs.filter(s => !s.usada).map(s => s.name);
 }
 async function cargarDocsExpediente(c, e) {
   if (e._docs || MODO_DEMO) return;
-  if (!e._subcarpeta) { e._docs = []; return; }
-  const items = await graphTodos("/me/drive/root:/" + c._ruta + "/" + encodeURIComponent(e._subcarpeta) + ":/children?$top=500&$select=name,file,webUrl");
-  e._docs = items.filter(i => i.file).map(i => ({ n: i.name, url: i.webUrl }));
+  // 1) subcarpeta ya emparejada por nombre
+  if (e._subcarpeta && e._subRuta) {
+    try {
+      const items = await graphTodos("/me/drive/root:/" + e._subRuta + "/" + encodeURIComponent(e._subcarpeta) + ":/children?$top=500&$select=name,file,webUrl");
+      e._docs = items.filter(i => i.file).map(i => ({ n: i.name, url: i.webUrl }));
+      if (e._docs.length) return;
+    } catch (err) { /* sigue al fallback por autos */ }
+  }
+  // 2) fallback: localizar la carpeta por el nº de autos dentro de los ficheros
+  //    de LexNET (p. ej. autos 376/2025 -> ficheros "2025_0000376_...")
+  const tok = lexnetToken(e.autos);
+  if (tok && c._rutas && c._rutas.length) {
+    for (const ruta of c._rutas) {
+      let hits = [];
+      try { hits = await graphTodos("/me/drive/root:/" + ruta + ":/search(q='" + tok + "')?$top=25&$select=name,file,parentReference,webUrl"); }
+      catch (err) { continue; }
+      const hit = hits.find(h => h.file && h.name.indexOf(tok) >= 0 && h.parentReference && h.parentReference.id);
+      if (hit) {
+        const items = await graphTodos("/me/drive/items/" + hit.parentReference.id + "/children?$top=500&$select=name,file,webUrl");
+        e._docs = items.filter(i => i.file).map(i => ({ n: i.name, url: i.webUrl }));
+        if (hit.parentReference.name) e._subcarpeta = hit.parentReference.name;
+        if (e._docs.length) return;
+      }
+    }
+  }
+  e._docs = e._docs || [];
 }
 
 /* ---------- indexado tras la carga ---------- */
@@ -594,15 +637,48 @@ function pintarResultados(f) {
     });
   });
   if (docs.length) {
-    html += '<p class="seccion">DOCUMENTOS (' + docs.length + ')</p>';
+    html += '<p class="seccion">DOCUMENTOS (EN EXPEDIENTES YA ABIERTOS)</p>';
     docs.slice(0, 8).forEach(o => {
       html += '<div class="fila-doc" style="cursor:pointer;" onclick="abrirExpedienteNav(' + o.i + ')"><i class="ti ' + iconoDoc(o.nombre) + '"></i>' +
         '<div class="nombre-doc"><p>' + esc(o.nombre) + '</p><p class="origen">' + esc(EXPS[o.i].e.desc) + " · " + esc(EXPS[o.i].cliente) + '</p></div></div>';
     });
-    if (!MODO_DEMO) html += '<p class="contador">Solo se busca en documentos de expedientes ya visitados</p>';
   }
+  // búsqueda de documentos en todo OneDrive (por nombre y por texto interno)
+  if (!MODO_DEMO && f.length >= 2) html += '<div id="docs-od"><p class="seccion">DOCUMENTOS EN ONEDRIVE</p><p class="contador">Buscando…</p></div>';
   cont.innerHTML = html || '<div class="vacio">Nada coincide con esa búsqueda</div>';
+  if (!MODO_DEMO && f.length >= 2) buscarDocsOneDriveDebounced(f);
 }
+let _odTimer = null, _odSeq = 0;
+function buscarDocsOneDriveDebounced(f) {
+  clearTimeout(_odTimer);
+  _odTimer = setTimeout(() => buscarDocsOneDrive(f), 400);
+}
+async function buscarDocsOneDrive(f) {
+  const seq = ++_odSeq;
+  const ruta = encodeURIComponent(BASE_MN());
+  let hits = [];
+  try {
+    hits = await graphTodos("/me/drive/root:/" + ruta + ":/search(q='" + f.replace(/'/g, "''") + "')?$top=40&$select=name,webUrl,file,parentReference");
+  } catch (e) { /* sin resultados */ }
+  if (seq !== _odSeq) return;            // ya hay una búsqueda más reciente
+  const cont = document.getElementById("docs-od");
+  if (!cont) return;
+  const docs = hits.filter(h => h.file);
+  if (!docs.length) {
+    cont.innerHTML = '<p class="seccion">DOCUMENTOS EN ONEDRIVE</p><p class="contador">Sin documentos que coincidan con «' + esc(f) + '»</p>';
+    return;
+  }
+  let html = '<p class="seccion">DOCUMENTOS EN ONEDRIVE (' + docs.length + (docs.length >= 40 ? "+" : "") + ')</p>';
+  docs.forEach(d => {
+    const carpeta = (d.parentReference && d.parentReference.name) || "";
+    html += '<div class="fila-doc" style="cursor:pointer;" onclick="abrirDocUrl(\'' + encodeURIComponent(d.webUrl || "") + '\')"><i class="ti ' + iconoDoc(d.name) + '"></i>' +
+      '<div class="nombre-doc"><p>' + esc(d.name) + '</p><p class="origen">' + esc(carpeta) + '</p></div>' +
+      '<i class="ti ti-external-link" style="color:var(--texto-3);font-size:15px;flex-shrink:0;"></i></div>';
+  });
+  html += '<p class="contador">Busca en el nombre y en el texto interno de los documentos. Los PDF escaneados sin OCR solo se encuentran por el nombre.</p>';
+  cont.innerHTML = html;
+}
+function abrirDocUrl(u) { const url = decodeURIComponent(u || ""); if (url) window.open(url, "_blank"); }
 function pintarResultadosAtajo(t) {
   const inp = document.getElementById("buscador");
   const cont = document.getElementById("resultados");
@@ -823,6 +899,7 @@ function pintarCalidad() {
 }
 function refrescar() {
   localStorage.removeItem("nacar_carpetas");
+  localStorage.removeItem("nacar_carpetas2");
   mapaCarpetas = null;
   cargarTodo();
 }
@@ -943,7 +1020,7 @@ function calcularIndem() {
 Object.assign(window, {
   irTab, abrirClienteNav, abrirExpedienteNav, abrirContrarioNav, abrirCitaNav,
   abrirDoc, compartirDoc, cambiarFiltro, pintarResultadosAtajo, refrescar,
-  cerrarSesion, pintarCalidad, irA, cargarTodo, pintarCalc, calcularIndem
+  cerrarSesion, pintarCalidad, irA, cargarTodo, pintarCalc, calcularIndem, abrirDocUrl
 });
 
 init().catch(e => {
