@@ -582,7 +582,7 @@ function pintarHoy() {
     let diaAct = "";
     proximas.forEach(c => {
       const d = fmtDia(c.inicio);
-      if (d !== diaAct) { diaAct = d; html += '<p class="seccion" style="font-weight:400;letter-spacing:0;color:var(--texto-2);margin-top:10px;">' + d + '</p>'; }
+      if (d !== diaAct) { diaAct = d; html += '<p class="dia-agenda">' + d + '</p>'; }
       html += htmlCita(c, CITAS.indexOf(c));
     });
   } else {
