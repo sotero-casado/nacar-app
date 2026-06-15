@@ -732,7 +732,7 @@ function pintarListaAgenda() {
     const grupo = c.tipo === "juicio" ? "juicio" : (c.tipo === "plazo" || c.tipo === "vencimiento") ? "plazo" : c.tipo === "confesion" ? "juicio" : "otra";
     if (filtroAgenda !== "todos" && grupo !== filtroAgenda) return;
     const d = fmtDia(c.inicio);
-    if (d !== diaAct) { diaAct = d; html += '<p class="seccion">' + d.toUpperCase() + '</p>'; }
+    if (d !== diaAct) { diaAct = d; html += '<p class="dia-agenda">' + d + '</p>'; }
     html += htmlCita(c, idx);
   });
   document.getElementById("lista-agenda").innerHTML = html || '<div class="vacio">No hay citas de este tipo</div>';
