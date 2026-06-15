@@ -2,7 +2,7 @@
   "name": "NÁCAR Abogados",
   "short_name": "NÁCAR",
   "description": "Consulta de expedientes, clientes y agenda del despacho (solo lectura)",
-  "start_url": "./index.html",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#FFFFFF",
   "theme_color": "#279C92",

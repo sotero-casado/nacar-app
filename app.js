@@ -392,7 +392,7 @@ async function init() {
     auth: {
       clientId: CFG.clientId,
       authority: "https://login.microsoftonline.com/" + (CFG.tenantId || "common"),
-      redirectUri: location.origin + location.pathname
+      redirectUri: location.origin + location.pathname.replace(/index\.html$/, "")
     },
     cache: { cacheLocation: "localStorage" }
   });
