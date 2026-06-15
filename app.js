@@ -68,8 +68,14 @@ function badgeEstado(estado) {
 }
 
 /* ---------- clasificación de citas de Outlook ---------- */
-function clasificarCita(asunto, cuerpo, inicio, fin) {
-  const esMN = (cuerpo || "").indexOf("Datos MNprogram") >= 0;
+function stripHtml(h) {
+  return (h || "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, " ")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/&nbsp;/g, " ")
+    .replace(/&ordm;/g, "º").replace(/\s+/g, " ").trim();
+}
+function clasificarCita(asunto, cuerpoHtml, inicio, fin) {
+  const t = stripHtml(cuerpoHtml);
+  const esMN = t.indexOf("Datos MNprogram") >= 0;
   let cliente = "", resto = asunto || "";
   const m = /^(.*?)\.\s+(.*)$/.exec(asunto || "");
   if (m && esMN) { cliente = m[1].trim(); resto = m[2].trim(); }
@@ -80,18 +86,17 @@ function clasificarCita(asunto, cuerpo, inicio, fin) {
     else if (/^confesi/i.test(resto)) tipo = "confesion";
     else tipo = "vencimiento";
   }
-  let numexp = "";
-  const me = /Expediente:\s*([\d]+\/[\d]+)/.exec(cuerpo || "");
-  if (me) numexp = me[1];
-  // contrario: en el asunto del juicio suele venir tras "/" o " - "
-  // (p. ej. "JUICIO MARKTEL / JONNY EDUARDO REVOLLEDO VILLAVICENCIO")
-  let contrario = "";
-  const mco = /\s[\/\-]\s+(.+)$/.exec(resto);
-  if (mco) contrario = mco[1].trim();
+  const grab = re => { const x = re.exec(t); return x ? x[1].trim() : ""; };
+  const numexp = grab(/Expediente:\s*(\d+\/\d+)/);
+  const autos = grab(/N[úu]m\.?\s*Autos:\s*(\d+\/\d+)/i);
+  // contrario y juzgado vienen etiquetados en el cuerpo del evento de MN
+  let contrario = grab(/Contrario:\s*(.+?)\s+(?:Juzgado|Correo|N[úu]m)\s*:/i);
+  if (!contrario) { const mco = /\s[\/\-]\s+(.+)$/.exec(resto); if (mco) contrario = mco[1].trim(); }
+  const juzgado = grab(/Juzgado:\s*(.+?)\s+N[úu]m\.?\s*Autos\s*:/i);
   let ciudad = "";
-  const mc = /^([A-Za-zÀ-ÿ.\s]{3,25}?)[\r\n]/.exec(cuerpo || "");
-  if (mc && mc[1].indexOf("<<<") < 0) ciudad = mc[1].trim();
-  return { inicio, fin, tipo, titulo: resto, cliente, numexp, contrario, ciudad, esMN };
+  const mciu = /\bde\s+([A-Za-zÀ-ÿ]+)\s*$/.exec(juzgado);
+  if (mciu) ciudad = mciu[1].trim();
+  return { inicio, fin, tipo, titulo: resto, cliente, numexp, autos, contrario, juzgado, ciudad, esMN };
 }
 function etiquetaTipo(t) {
   return { juicio: "Juicio", plazo: "Plazo", confesion: "Confesión", vencimiento: "Vencimiento", otra: "Otra cita" }[t] || t;
@@ -113,17 +118,16 @@ function ciudadDeCita(c) {
   }
   return "";
 }
+function normAutos(a) { const m = /(\d+)\s*\/\s*(\d{4})/.exec(a || ""); return m ? (parseInt(m[1], 10) + "/" + m[2]) : ""; }
 function expedienteDeCita(c) {
   const cli = c.cliente ? norm(c.cliente) : "";
-  // candidatos por referencia de expediente + cliente
-  const cands = [];
-  if (c.numexp) {
-    for (let i = 0; i < EXPS.length; i++) {
-      if (EXPS[i].e.numexp === c.numexp && (!cli || norm(EXPS[i].cliente) === cli)) cands.push(i);
-    }
+  const delCliente = i => !cli || norm(EXPS[i].cliente) === cli;
+  // 1) por NÚMERO DE AUTOS: clave única (distingue varios expedientes del mismo trabajador)
+  const ca = normAutos(c.autos);
+  if (ca) {
+    for (let i = 0; i < EXPS.length; i++) if (delCliente(i) && normAutos(EXPS[i].e.autos) === ca) return i;
   }
-  // La referencia "2024/2024" es genérica y la comparten muchos expedientes;
-  // si tenemos el contrario (del asunto del juicio) es la clave fiable.
+  // 2) por CONTRARIO: solo si el trabajador tiene un único expediente (si no, es ambiguo)
   const con = c.contrario ? norm(c.contrario) : "";
   if (con) {
     const tk = con.split(/\s+/).filter(w => w.length >= 4);
@@ -133,12 +137,18 @@ function expedienteDeCita(c) {
       const h = tk.filter(w => ec.indexOf(w) >= 0).length;
       return h >= 2 || (tk.length === 1 && h === 1);
     };
-    const enCands = cands.filter(coincide);
-    if (enCands.length) return enCands[0];
-    if (cli) { for (let i = 0; i < EXPS.length; i++) if (norm(EXPS[i].cliente) === cli && coincide(i)) return i; }
+    const m = [];
+    for (let i = 0; i < EXPS.length; i++) if (delCliente(i) && coincide(i)) m.push(i);
+    if (m.length === 1) return m[0];
+    if (m.length > 1) return -1;  // varios expedientes del mismo contrario sin autos: no arriesgar
   }
-  // sin contrario: la referencia solo es fiable si es inequívoca
-  return cands.length === 1 ? cands[0] : -1;
+  // 3) por referencia de expediente, solo si es inequívoca
+  if (c.numexp) {
+    const m = [];
+    for (let i = 0; i < EXPS.length; i++) if (delCliente(i) && EXPS[i].e.numexp === c.numexp) m.push(i);
+    if (m.length === 1) return m[0];
+  }
+  return -1;
 }
 
 /* ---------- avisos ---------- */
@@ -285,11 +295,13 @@ async function cargarExportaciones() {
 async function cargarCalendario() {
   const ini = new Date();
   const fin = new Date(Date.now() + (CFG.diasCalendario || 90) * 86400000);
+  // pedimos el cuerpo COMPLETO (no bodyPreview): MN Program incluye ahí el nº de
+  // autos y el juzgado, que es la clave única para enlazar la cita a su expediente
   const url = "/me/calendarView?startDateTime=" + ini.toISOString() + "&endDateTime=" + fin.toISOString() +
-    "&$top=100&$select=subject,bodyPreview,start,end&$orderby=start/dateTime";
+    "&$top=100&$select=subject,body,start,end&$orderby=start/dateTime";
   const eventos = await graphTodos(url);
   return eventos.map(ev => clasificarCita(
-    ev.subject || "", ev.bodyPreview || "",
+    ev.subject || "", (ev.body && ev.body.content) || "",
     new Date(ev.start.dateTime + (ev.start.timeZone === "UTC" ? "Z" : "")),
     new Date(ev.end.dateTime + (ev.end.timeZone === "UTC" ? "Z" : ""))
   ));
@@ -561,12 +573,14 @@ function htmlCita(c, idx) {
   const es = estiloTipo(c.tipo);
   const expI = expedienteDeCita(c);
   const finde = c.tipo === "plazo" && (c.inicio.getDay() === 0 || c.inicio.getDay() === 6);
+  const autos = expI >= 0 && EXPS[expI].e.autos ? EXPS[expI].e.autos : c.autos;
+  const juzgado = expI >= 0 && EXPS[expI].e.juzgado ? EXPS[expI].e.juzgado : c.juzgado;
   return '<div class="tarjeta-cita" onclick="abrirCitaNav(' + idx + ')">' +
     '<div class="icono-tipo" style="background:' + es.bg + ';"><i class="ti ' + es.icono + '" style="color:' + es.color + ';"></i></div>' +
     '<div class="cuerpo"><div class="linea1"><p>' + esc(c.titulo) + '</p>' +
     '<span class="hora" style="background:' + es.bg + ';color:' + es.color + ';">' + fmtHora(c.inicio) + '</span></div>' +
-    '<p class="sub">' + [c.cliente ? esc(c.cliente) : "", expI >= 0 && EXPS[expI].e.autos ? "Autos " + esc(EXPS[expI].e.autos) : ""].filter(Boolean).join(" · ") + '</p>' +
-    (expI >= 0 && EXPS[expI].e.juzgado ? '<p class="sub"><i class="ti ti-building-bank" style="font-size:12px;"></i> ' + esc(EXPS[expI].e.juzgado) + '</p>' : "") +
+    '<p class="sub">' + [c.cliente ? esc(c.cliente) : "", autos ? "Autos " + esc(autos) : ""].filter(Boolean).join(" · ") + '</p>' +
+    (juzgado ? '<p class="sub"><i class="ti ti-building-bank" style="font-size:12px;"></i> ' + esc(juzgado) + '</p>' : "") +
     (finde ? '<p class="aviso-linea"><i class="ti ti-alert-triangle" style="font-size:12px;"></i> Cae en fin de semana</p>' : "") +
     '</div></div>';
 }
@@ -858,7 +872,12 @@ function abrirExpediente(i) {
   const x = EXPS[i], e = x.e, c = CLIENTES[x.ci];
   ponerEstado("Ficha de expediente");
   const ki = e.contrario ? conIdx[norm(e.contrario)] : undefined;
-  const citasExp = CITAS.map((ct, idx) => ({ ct, idx })).filter(o => o.ct.numexp && o.ct.numexp === e.numexp && o.ct.fin >= new Date());
+  const ahoraC = new Date();
+  const citasExp = CITAS.map((ct, idx) => ({ ct, idx })).filter(o => {
+    if (o.ct.fin < ahoraC) return false;
+    const k = expedienteDeCita(o.ct);
+    return k >= 0 && EXPS[k].e === e;
+  });
   let html = '<div class="cabecera-ficha"><div class="fila-id">' +
     '<div class="avatar-g cuadrado"><i class="ti ti-briefcase"></i></div>' +
     '<div><h2>' + esc(e.desc) + '</h2><p class="sub">' + esc(e.tproc || "Sin tipo de procedimiento") + '</p></div></div>' +
