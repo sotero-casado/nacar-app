@@ -403,6 +403,10 @@ async function cargarDocsExpediente(c, e) {
       const items = await graphTodos("/me/drive/root:/" + e._subRuta + "/" + encodeURIComponent(e._subcarpeta) + ":/children?$top=500&$select=name,file,webUrl,createdDateTime,lastModifiedDateTime");
       const todos = items.filter(i => i.file).map(i => ({ n: i.name, url: i.webUrl, f: i.createdDateTime || i.lastModifiedDateTime }));
       e._docs = filtrarDocsExpediente(todos, e);
+      if (autosDistintos(todos) >= 3) {
+        e._cajon = true; e._cajonTotal = todos.length;
+        try { const pf = await graph("/me/drive/root:/" + e._subRuta + "/" + encodeURIComponent(e._subcarpeta) + "?$select=webUrl"); e._carpetaUrl = pf.webUrl; } catch (_) {}
+      }
       if (e._docs.length) return;
     } catch (err) { /* sigue al fallback por autos */ }
   }
@@ -420,6 +424,10 @@ async function cargarDocsExpediente(c, e) {
         const todos = items.filter(i => i.file).map(i => ({ n: i.name, url: i.webUrl, f: i.createdDateTime || i.lastModifiedDateTime }));
         e._docs = filtrarDocsExpediente(todos, e);
         if (hit.parentReference.name) e._subcarpeta = hit.parentReference.name;
+        if (autosDistintos(todos) >= 3) {
+          e._cajon = true; e._cajonTotal = todos.length;
+          try { const pf = await graph("/me/drive/items/" + hit.parentReference.id + "?$select=webUrl"); e._carpetaUrl = pf.webUrl; } catch (_) {}
+        }
         if (e._docs.length) return;
       }
     }
@@ -910,6 +918,11 @@ function abrirExpediente(i) {
     vis.forEach(d => { h += htmlDoc(d, c); });
     if (!docs.length) h = '<p class="contador">' + (e._subcarpeta === undefined && !MODO_DEMO && !c._docsCargados ? "Cargando..." : "La documentación de este expediente está en la carpeta general del cliente.") + '</p>';
     else if (!vis.length) h = '<div class="vacio">Ningún documento coincide</div>';
+    if (e._cajon && e._carpetaUrl) {
+      h += '<div class="caja-info" style="margin:12px 14px 4px;background:var(--ambar-bg);"><i class="ti ti-info-circle" style="color:var(--ambar);"></i>' +
+        '<p style="color:var(--ambar);">Estos son los documentos identificados de este expediente. Su carpeta es un archivo común de ' + e._cajonTotal + ' documentos de varios expedientes; puede haber más cuyo nombre no permite asignarlos automáticamente.</p></div>' +
+        '<div style="padding:6px 14px 14px;"><button class="boton-principal" onclick="abrirDocUrl(\'' + encodeURIComponent(e._carpetaUrl) + '\')"><i class="ti ti-folder-open" style="vertical-align:-2px;"></i> Abrir la carpeta completa en OneDrive</button></div>';
+    }
     const cont = document.getElementById("docs-exp");
     if (cont) cont.innerHTML = h;
   };
