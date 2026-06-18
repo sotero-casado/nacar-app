@@ -293,8 +293,11 @@ async function cargarExportaciones() {
 
 /* ---------- calendario ---------- */
 async function cargarCalendario() {
-  const ini = new Date();
-  const fin = new Date(Date.now() + (CFG.diasCalendario || 90) * 86400000);
+  // ventana amplia: 1 mes atrás y ~4 años adelante (los señalamientos se fijan con
+  // años de antelación), para que el calendario mensual tenga datos en cualquier mes
+  const hoy = new Date();
+  const ini = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+  const fin = new Date(hoy.getFullYear() + (CFG.aniosCalendario || 4), hoy.getMonth(), 1);
   // pedimos el cuerpo COMPLETO (no bodyPreview): MN Program incluye ahí el nº de
   // autos y el juzgado, que es la clave única para enlazar la cita a su expediente
   const url = "/me/calendarView?startDateTime=" + ini.toISOString() + "&endDateTime=" + fin.toISOString() +
@@ -616,7 +619,8 @@ function pintarHoy() {
   const hoyP = CITAS.filter(c => c.tipo !== "juicio" && c.esMN && mismoDia(c.inicio, ahora));
   const finSemana = new Date(ahora); finSemana.setDate(finSemana.getDate() + (7 - finSemana.getDay()) % 7 + 1);
   const semanaJ = CITAS.filter(c => c.tipo === "juicio" && c.inicio >= ahora && c.inicio < finSemana);
-  const totalJ = CITAS.filter(c => c.tipo === "juicio" && c.inicio >= ahora);
+  const finVentana = new Date(ahora.getTime() + (CFG.diasCalendario || 90) * 86400000);
+  const totalJ = CITAS.filter(c => c.tipo === "juicio" && c.inicio >= ahora && c.inicio < finVentana);
   let html = '<div class="saludo"><h1>' + saludoHora() + (FUENTE.usuario ? ", " + esc(FUENTE.usuario) : "") + '</h1>' +
     '<p>' + fmtDia(ahora) + " de " + ahora.getFullYear() + '</p></div>' +
     '<div class="metricas">' +
