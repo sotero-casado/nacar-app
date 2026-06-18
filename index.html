@@ -83,6 +83,17 @@
   .seccion { margin: 14px 18px 5px; font-size: 11px; letter-spacing: 1px; color: var(--texto-3); font-weight: 600; }
   .dia-agenda { margin: 20px 18px 8px; font-size: 16px; font-weight: 700; color: var(--teal); border-bottom: 1.5px solid var(--teal-bg); padding-bottom: 5px; }
   .dia-agenda:first-child { margin-top: 12px; }
+  .cal-head { display: flex; align-items: center; gap: 8px; margin: 12px 14px 4px; }
+  .cal-head .mes { flex: 1; text-align: center; margin: 0; font-size: 16px; font-weight: 600; }
+  .cal-nav { width: 34px; height: 34px; border: none; border-radius: 50%; background: var(--fondo-2); color: var(--teal); font-size: 17px; cursor: pointer; flex-shrink: 0; }
+  .cal-hoy { border: 0.5px solid var(--teal); color: var(--teal); background: none; border-radius: 10px; padding: 4px 12px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; padding: 0 10px; }
+  .cal-dow { text-align: center; font-size: 10px; color: var(--texto-3); padding: 4px 0; font-weight: 600; }
+  .cal-cell { aspect-ratio: 1 / 1; display: flex; flex-direction: column; align-items: center; padding-top: 5px; border-radius: 10px; cursor: pointer; font-size: 13px; }
+  .cal-cell.hoy { border: 1.5px solid var(--teal); }
+  .cal-cell.sel { background: var(--teal); color: #fff; font-weight: 600; }
+  .cal-dots { display: flex; gap: 2px; height: 6px; margin-top: 3px; }
+  .cal-dot { width: 5px; height: 5px; border-radius: 50%; }
   .contador { margin: 10px 18px 4px; font-size: 11px; color: var(--texto-3); }
   .fila { display: flex; align-items: center; gap: 12px; padding: 12px 18px; border-bottom: 0.5px solid var(--borde); cursor: pointer; }
   .fila .avatar {
@@ -260,6 +271,6 @@
   <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.28.1/lib/msal-browser.min.js"></script>
   <script src="config.js?v=4"></script>
   <script src="demo-data.js?v=4"></script>
-  <script src="app.js?v=17"></script>
+  <script src="app.js?v=18"></script>
 </body>
 </html>

@@ -777,38 +777,97 @@ function pintarResultadosAtajo(t) {
 }
 
 /* ---------- pantalla AGENDA ---------- */
-let filtroAgenda = "todos";
+let filtroAgenda = "todos", vistaAgenda = "mes", mesAgenda = null, diaSel = null;
+function grupoCita(c) {
+  return (c.tipo === "juicio" || c.tipo === "confesion") ? "juicio"
+    : (c.tipo === "plazo" || c.tipo === "vencimiento") ? "plazo" : "otra";
+}
+function capFirst(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 function pintarAgenda() {
   actualizarTabs("agenda");
   ponerEstado("Agenda · Outlook");
+  if (!mesAgenda) { const h = new Date(); mesAgenda = new Date(h.getFullYear(), h.getMonth(), 1); }
+  if (!diaSel) diaSel = new Date();
   const ahora = new Date();
   const futuras = CITAS.filter(c => c.fin >= ahora);
-  const nJ = futuras.filter(c => c.tipo === "juicio").length;
-  const nP = futuras.filter(c => c.tipo === "plazo" || c.tipo === "vencimiento").length;
+  const nJ = futuras.filter(c => grupoCita(c) === "juicio").length;
+  const nP = futuras.filter(c => grupoCita(c) === "plazo").length;
   const nO = futuras.length - nJ - nP;
   let html = '<div class="caja-info"><i class="ti ti-refresh"></i><p>Sincronizado con tu calendario de Outlook · se actualiza solo</p></div>' +
+    '<div class="chips" style="margin-bottom:4px;">' +
+    '<button class="chip' + (vistaAgenda === "mes" ? " activo" : "") + '" onclick="setVistaAgenda(\'mes\')"><i class="ti ti-calendar-month" style="font-size:14px;vertical-align:-2px;"></i> Mes</button>' +
+    '<button class="chip' + (vistaAgenda === "lista" ? " activo" : "") + '" onclick="setVistaAgenda(\'lista\')"><i class="ti ti-list" style="font-size:14px;vertical-align:-2px;"></i> Lista</button></div>' +
     '<div class="chips">' +
     chip("todos", "Todas (" + futuras.length + ")") + chip("juicio", "Juicios (" + nJ + ")") +
-    chip("plazo", "Plazos (" + nP + ")") + chip("otra", "Otras (" + nO + ")") + '</div><div id="lista-agenda"></div>';
+    chip("plazo", "Plazos (" + nP + ")") + chip("otra", "Otras (" + nO + ")") + '</div>' +
+    '<div id="agenda-cuerpo"></div>';
   pintar(html);
-  pintarListaAgenda();
+  if (vistaAgenda === "mes") { document.getElementById("agenda-cuerpo").innerHTML = '<div id="cal-grid"></div><div id="cal-dia"></div>'; renderGrid(); renderDiaSel(); }
+  else pintarListaAgenda();
 }
 function chip(id, label) {
   return '<button class="chip' + (filtroAgenda === id ? " activo" : "") + '" onclick="cambiarFiltro(\'' + id + '\')">' + label + '</button>';
 }
 function cambiarFiltro(f) { filtroAgenda = f; pintarAgenda(); }
+function setVistaAgenda(v) { vistaAgenda = v; pintarAgenda(); }
+function agendaMes(delta) {
+  if (delta === 0) { const h = new Date(); mesAgenda = new Date(h.getFullYear(), h.getMonth(), 1); diaSel = new Date(); }
+  else mesAgenda = new Date(mesAgenda.getFullYear(), mesAgenda.getMonth() + delta, 1);
+  renderGrid(); renderDiaSel();
+}
+function seleccionarDia(y, m, dia) { diaSel = new Date(y, m, dia); renderGrid(); renderDiaSel(); }
+function colorGrupo(g, sel) {
+  if (sel) return "#fff";
+  return g === "juicio" ? "var(--teal)" : g === "plazo" ? "var(--ambar)" : "var(--texto-3)";
+}
+function renderGrid() {
+  const cont = document.getElementById("cal-grid"); if (!cont) return;
+  const y = mesAgenda.getFullYear(), m = mesAgenda.getMonth();
+  const offset = (new Date(y, m, 1).getDay() + 6) % 7;
+  const diasMes = new Date(y, m + 1, 0).getDate();
+  const hoy = new Date();
+  const porDia = {};
+  CITAS.forEach(c => {
+    if (filtroAgenda !== "todos" && grupoCita(c) !== filtroAgenda) return;
+    const d = c.inicio;
+    if (d.getFullYear() === y && d.getMonth() === m) (porDia[d.getDate()] = porDia[d.getDate()] || new Set()).add(grupoCita(c));
+  });
+  let h = '<div class="cal-head"><button class="cal-nav" onclick="agendaMes(-1)" aria-label="Mes anterior"><i class="ti ti-chevron-left"></i></button>' +
+    '<p class="mes">' + capFirst(mesAgenda.toLocaleDateString("es-ES", { month: "long", year: "numeric" })) + '</p>' +
+    '<button class="cal-nav" onclick="agendaMes(1)" aria-label="Mes siguiente"><i class="ti ti-chevron-right"></i></button></div>' +
+    '<div style="text-align:center;margin:-2px 0 8px;"><button class="cal-hoy" onclick="agendaMes(0)">Hoy</button></div>' +
+    '<div class="cal-grid">';
+  ["L", "M", "X", "J", "V", "S", "D"].forEach(d => h += '<div class="cal-dow">' + d + '</div>');
+  for (let i = 0; i < offset; i++) h += '<div></div>';
+  for (let dia = 1; dia <= diasMes; dia++) {
+    const fecha = new Date(y, m, dia);
+    const esHoy = mismoDia(fecha, hoy), esSel = mismoDia(fecha, diaSel);
+    const dots = (porDia[dia] ? [...porDia[dia]] : []).map(g => '<span class="cal-dot" style="background:' + colorGrupo(g, esSel) + ';"></span>').join("");
+    h += '<div class="cal-cell' + (esHoy ? " hoy" : "") + (esSel ? " sel" : "") + '" onclick="seleccionarDia(' + y + ',' + m + ',' + dia + ')">' + dia + '<div class="cal-dots">' + dots + '</div></div>';
+  }
+  cont.innerHTML = h + '</div>';
+}
+function renderDiaSel() {
+  const cont = document.getElementById("cal-dia"); if (!cont) return;
+  const items = CITAS.map((c, idx) => ({ c, idx }))
+    .filter(o => mismoDia(o.c.inicio, diaSel) && (filtroAgenda === "todos" || grupoCita(o.c) === filtroAgenda))
+    .sort((a, b) => a.c.inicio - b.c.inicio);
+  let h = '<p class="dia-agenda">' + fmtDia(diaSel) + '</p>';
+  if (items.length) items.forEach(o => h += htmlCita(o.c, o.idx));
+  else h += '<p class="contador" style="text-align:center;padding:14px;">Sin citas este día</p>';
+  cont.innerHTML = h;
+}
 function pintarListaAgenda() {
   const ahora = new Date();
   let html = "", diaAct = "";
   CITAS.forEach((c, idx) => {
     if (c.fin < ahora) return;
-    const grupo = c.tipo === "juicio" ? "juicio" : (c.tipo === "plazo" || c.tipo === "vencimiento") ? "plazo" : c.tipo === "confesion" ? "juicio" : "otra";
-    if (filtroAgenda !== "todos" && grupo !== filtroAgenda) return;
+    if (filtroAgenda !== "todos" && grupoCita(c) !== filtroAgenda) return;
     const d = fmtDia(c.inicio);
     if (d !== diaAct) { diaAct = d; html += '<p class="dia-agenda">' + d + '</p>'; }
     html += htmlCita(c, idx);
   });
-  document.getElementById("lista-agenda").innerHTML = html || '<div class="vacio">No hay citas de este tipo</div>';
+  document.getElementById("agenda-cuerpo").innerHTML = html || '<div class="vacio">No hay citas de este tipo</div>';
 }
 
 /* ---------- ficha CLIENTE ---------- */
@@ -1118,7 +1177,8 @@ function calcularIndem() {
 Object.assign(window, {
   irTab, abrirClienteNav, abrirExpedienteNav, abrirContrarioNav, abrirCitaNav,
   abrirDoc, compartirDoc, cambiarFiltro, pintarResultadosAtajo, refrescar,
-  cerrarSesion, pintarCalidad, irA, cargarTodo, pintarCalc, calcularIndem, abrirDocUrl
+  cerrarSesion, pintarCalidad, irA, cargarTodo, pintarCalc, calcularIndem, abrirDocUrl,
+  setVistaAgenda, agendaMes, seleccionarDia
 });
 
 init().catch(e => {
