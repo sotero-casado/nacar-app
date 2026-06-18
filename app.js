@@ -293,21 +293,30 @@ async function cargarExportaciones() {
 
 /* ---------- calendario ---------- */
 async function cargarCalendario() {
-  // ventana muy amplia para incluir TODOS los señalamientos, sea cual sea su fecha
-  // (Graph exige un rango; usamos varios años atrás y muchos por delante)
   const hoy = new Date();
-  const ini = new Date(hoy.getFullYear() - (CFG.aniosAtras || 3), 0, 1);
-  const fin = new Date(hoy.getFullYear() + (CFG.aniosCalendario || 10), 11, 31);
-  // pedimos el cuerpo COMPLETO (no bodyPreview): MN Program incluye ahí el nº de
-  // autos y el juzgado, que es la clave única para enlazar la cita a su expediente
-  const url = "/me/calendarView?startDateTime=" + ini.toISOString() + "&endDateTime=" + fin.toISOString() +
-    "&$top=100&$select=subject,body,start,end&$orderby=start/dateTime";
-  const eventos = await graphTodos(url);
-  return eventos.map(ev => clasificarCita(
-    ev.subject || "", (ev.body && ev.body.content) || "",
-    new Date(ev.start.dateTime + (ev.start.timeZone === "UTC" ? "Z" : "")),
-    new Date(ev.end.dateTime + (ev.end.timeZone === "UTC" ? "Z" : ""))
-  ));
+  // Ventana amplia para incluir TODOS los señalamientos (el más lejano suele estar a
+  // 2-3 años). Microsoft rechaza rangos enormes, así que si falla probamos uno menor;
+  // si todo falla, devolvemos vacío para que la app cargue igualmente clientes/expedientes.
+  const ventanas = [
+    [new Date(hoy.getFullYear(), hoy.getMonth() - 6, 1), new Date(hoy.getFullYear() + 4, hoy.getMonth(), 1)],
+    [new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1), new Date(hoy.getFullYear() + 2, hoy.getMonth(), 1)],
+    [hoy, new Date(Date.now() + 120 * 86400000)]
+  ];
+  for (const [ini, fin] of ventanas) {
+    try {
+      // cuerpo COMPLETO (no bodyPreview): MN incluye ahí el nº de autos y el juzgado,
+      // clave única para enlazar la cita con su expediente
+      const url = "/me/calendarView?startDateTime=" + ini.toISOString() + "&endDateTime=" + fin.toISOString() +
+        "&$top=100&$select=subject,body,start,end&$orderby=start/dateTime";
+      const eventos = await graphTodos(url);
+      return eventos.map(ev => clasificarCita(
+        ev.subject || "", (ev.body && ev.body.content) || "",
+        new Date(ev.start.dateTime + (ev.start.timeZone === "UTC" ? "Z" : "")),
+        new Date(ev.end.dateTime + (ev.end.timeZone === "UTC" ? "Z" : ""))
+      ));
+    } catch (e) { /* ventana demasiado amplia: probar la siguiente, menor */ }
+  }
+  return [];
 }
 
 /* ---------- documentos de OneDrive ---------- */
