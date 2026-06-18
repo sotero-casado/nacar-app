@@ -554,6 +554,7 @@ function actualizarAtras() {
   document.getElementById("btn-atras").style.display = historial.length > 1 ? "flex" : "none";
 }
 function irTab(tab) {
+  if (tab === "agenda") { vistaAgenda = "mes"; mesAgenda = null; diaSel = null; }  // la Agenda abre siempre en vista mensual del mes actual
   const fn = tab === "hoy" ? pintarHoy : tab === "buscar" ? pintarBuscar : tab === "calc" ? pintarCalc : pintarAgenda;
   historial = [fn];
   actualizarTabs(tab);
