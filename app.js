@@ -5,7 +5,7 @@
    ============================================================ */
 "use strict";
 
-const APP_VERSION = "25";
+const APP_VERSION = "26";
 const CFG = window.NACAR_CONFIG || {};
 const MODO_DEMO = !CFG.clientId;
 const SCOPES = ["User.Read", "Files.Read.All", "Calendars.Read"];
@@ -225,6 +225,7 @@ function tipoDeExcel(rows) {
   const hdr = rows[0].map(c => norm(String(c || "")));
   if (hdr.some(h => h.indexOf("numero cliente") >= 0)) return "clientes";
   if (hdr.some(h => h.indexOf("juzgado principal") >= 0 || h === "num exp")) return "expedientes";
+  if (hdr.some(h => h.indexOf("fecha actuacion") >= 0)) return "actuaciones";
   return null;
 }
 function col(hdr, nombre) {
@@ -271,15 +272,75 @@ function parseExpedientes(rows) {
   }
   return out;
 }
+// Fecha+hora de una actuación: la fecha viene como nº de serie de Excel y la hora
+// como fracción de día; toleramos también Date o cadenas.
+function fechaActu(fSerial, hVal) {
+  let y, mo, d;
+  if (typeof fSerial === "number") {
+    const dt = new Date(Math.floor(fSerial) * 86400000 + Date.UTC(1899, 11, 30));
+    y = dt.getUTCFullYear(); mo = dt.getUTCMonth(); d = dt.getUTCDate();
+  } else if (fSerial instanceof Date) {
+    y = fSerial.getFullYear(); mo = fSerial.getMonth(); d = fSerial.getDate();
+  } else {
+    const m = /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/.exec(String(fSerial || ""));
+    if (!m) return null; d = +m[1]; mo = +m[2] - 1; y = +m[3];
+  }
+  let hh = 0, mi = 0;
+  if (typeof hVal === "number") { const t = Math.round(hVal * 1440); hh = Math.floor(t / 60) % 24; mi = t % 60; }
+  else if (hVal instanceof Date) { hh = hVal.getHours(); mi = hVal.getMinutes(); }
+  else { const m = /(\d{1,2}):(\d{2})/.exec(String(hVal || "")); if (m) { hh = +m[1]; mi = +m[2]; } }
+  const dt = new Date(y, mo, d, hh, mi);
+  return isNaN(dt) ? null : dt;
+}
+function tipoActuacion(desc) {
+  const d = (desc || "").toLowerCase();
+  if (d.indexOf("juicio") >= 0) return "juicio";
+  if (d.indexOf("aportar") >= 0) return "plazo";
+  if (d.indexOf("confesi") >= 0) return "confesion";
+  if (d.indexOf("vencimiento") >= 0) return "vencimiento";
+  return "otra";
+}
+function parseActuaciones(rows) {
+  const h = rows[0];
+  const iF = col(h, "Fecha Actuación"), iH = col(h, "Hora Inicio"), iD = col(h, "Descripción"),
+    iNom = col(h, "Nombre"), iCon = col(h, "Contrario"), iJuz = col(h, "Juzgado"),
+    iTpro = col(h, "Tipo de Procedimiento"), iAut = col(h, "Num. Autos");
+  const out = [];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i]; if (!r) continue;
+    const inicio = fechaActu(r[iF], r[iH]); if (!inicio) continue;
+    const desc = String(r[iD] || "").trim();
+    out.push({
+      inicio, fin: new Date(inicio.getTime() + 1800000), tipo: tipoActuacion(desc),
+      titulo: desc, cliente: String(r[iNom] || "").trim(), contrario: String(r[iCon] || "").trim(),
+      juzgado: String(r[iJuz] || "").trim(), tproc: String(r[iTpro] || "").trim(),
+      autos: String(r[iAut] || "").trim(), numexp: "", esMN: true, fuente: "actuacion"
+    });
+  }
+  return out;
+}
+// Une las citas de Outlook (tiempo real) con las del Excel de actuaciones de MN,
+// sin duplicar: una actuación que ya está en Outlook (mismo día + autos/contrario
+// + tipo) no se repite; las que no están (p. ej. 2029) se añaden.
+function claveCita(c) {
+  const i = c.inicio;
+  return i.getFullYear() + "-" + (i.getMonth() + 1) + "-" + i.getDate() + "|" + (normAutos(c.autos) || norm(c.contrario || "")) + "|" + grupoCita(c);
+}
+function mergeCitas(principal, extra) {
+  const vistos = new Set(principal.map(claveCita));
+  const adic = [];
+  for (const c of extra) { const k = claveCita(c); if (!vistos.has(k)) { vistos.add(k); adic.push(c); } }
+  return principal.concat(adic).sort((a, b) => a.inicio - b.inicio);
+}
 async function cargarExportaciones() {
   const carpeta = encodeURIComponent(CFG.carpetaExportaciones || "Descargas");
   const items = await graphTodos("/me/drive/root:/" + carpeta + ":/children?$top=200");
   const excels = items.filter(i => i.file && /\.xlsx?$/i.test(i.name))
     .sort((a, b) => new Date(b.lastModifiedDateTime) - new Date(a.lastModifiedDateTime))
     .slice(0, 15);
-  let clientesRaw = null, expsRaw = null;
+  let clientesRaw = null, expsRaw = null, actuRaw = null;
   for (const it of excels) {
-    if (clientesRaw && expsRaw) break;
+    if (clientesRaw && expsRaw && actuRaw) break;
     try {
       const r = await fetch(it["@microsoft.graph.downloadUrl"]);
       const buf = await r.arrayBuffer();
@@ -290,11 +351,17 @@ async function cargarExportaciones() {
         clientesRaw = rows; FUENTE.fClientes = new Date(it.lastModifiedDateTime);
       } else if (tipo === "expedientes" && !expsRaw) {
         expsRaw = rows; FUENTE.fExpedientes = new Date(it.lastModifiedDateTime);
+      } else if (tipo === "actuaciones" && !actuRaw) {
+        actuRaw = rows; FUENTE.fActu = new Date(it.lastModifiedDateTime);
       }
     } catch (e) { /* fichero ilegible: probar el siguiente */ }
   }
   if (!clientesRaw && !expsRaw) throw new Error("Faltan los Excel de MN Program en la carpeta «" + (CFG.carpetaExportaciones || "Descargas") + "». Vuelve a exportar Clientes y Expedientes desde MN Program y guárdalos ahí; luego pulsa Reintentar.");
-  return { clientes: clientesRaw ? parseClientes(clientesRaw) : [], exps: expsRaw ? parseExpedientes(expsRaw) : [] };
+  return {
+    clientes: clientesRaw ? parseClientes(clientesRaw) : [],
+    exps: expsRaw ? parseExpedientes(expsRaw) : [],
+    citasMN: actuRaw ? parseActuaciones(actuRaw) : []
+  };
 }
 
 /* ---------- calendario ---------- */
@@ -539,14 +606,16 @@ async function cargarTodo() {
   try {
     const yo = await graph("/me");
     FUENTE.usuario = (yo.givenName || yo.displayName || "").split(" ")[0];
-    // Esencial primero: clientes y expedientes. La app ya es usable con esto.
+    // Esencial primero: clientes, expedientes y (si está) los señalamientos de MN.
     const exp = await cargarExportaciones();
-    indexar(exp.clientes, exp.exps, []);
+    const citasMN = exp.citasMN || [];
+    indexar(exp.clientes, exp.exps, citasMN);   // la agenda ya tiene los señalamientos de MN
     ponerEstado("Conectado");
     irTab("hoy");
-    // La agenda (calendario) se carga aparte: si es lenta o falla, no bloquea la app.
-    cargarCalendario().then(citas => {
-      CITAS = (citas || []).sort((a, b) => a.inicio - b.inicio);
+    // El calendario de Outlook se carga aparte y se fusiona (tiempo real + lo que MN
+    // no haya sincronizado). Si es lento o falla, no bloquea la app.
+    cargarCalendario().then(citasOutlook => {
+      CITAS = mergeCitas(citasOutlook || [], citasMN);
       if (tabActual === "hoy") pintarHoy(); else if (tabActual === "agenda") pintarAgenda();
     }).catch(() => {});
   } catch (e) {
@@ -821,7 +890,9 @@ function pintarAgenda() {
   const nJ = futuras.filter(c => grupoCita(c) === "juicio").length;
   const nP = futuras.filter(c => grupoCita(c) === "plazo").length;
   const nO = futuras.length - nJ - nP;
-  let html = '<div class="caja-info"><i class="ti ti-refresh"></i><p>Sincronizado con tu calendario de Outlook · se actualiza solo</p></div>' +
+  const hayMN = CITAS.some(c => c.fuente === "actuacion");
+  let html = '<div class="caja-info"><i class="ti ti-refresh"></i><p>' +
+    (hayMN ? "Señalamientos de MN Program + tu calendario de Outlook" : "Sincronizado con tu calendario de Outlook · se actualiza solo") + '</p></div>' +
     '<div class="chips" style="margin-bottom:4px;">' +
     '<button class="chip' + (vistaAgenda === "mes" ? " activo" : "") + '" onclick="setVistaAgenda(\'mes\')"><i class="ti ti-calendar-month" style="font-size:14px;vertical-align:-2px;"></i> Mes</button>' +
     '<button class="chip' + (vistaAgenda === "lista" ? " activo" : "") + '" onclick="setVistaAgenda(\'lista\')"><i class="ti ti-list" style="font-size:14px;vertical-align:-2px;"></i> Lista</button></div>' +
