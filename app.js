@@ -199,9 +199,14 @@ async function token() {
 }
 async function graph(ruta) {
   const t = await token();
-  const r = await fetch(ruta.startsWith("http") ? ruta : GRAPH + ruta, { headers: { Authorization: "Bearer " + t, Prefer: 'outlook.timezone="Europe/Madrid"' } });
-  if (!r.ok) throw new Error("Graph " + r.status + " en " + ruta);
-  return r.json();
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), 45000);  // ninguna llamada se queda colgada
+  try {
+    const r = await fetch(ruta.startsWith("http") ? ruta : GRAPH + ruta,
+      { headers: { Authorization: "Bearer " + t, Prefer: 'outlook.timezone="Europe/Madrid"' }, signal: ctrl.signal });
+    if (!r.ok) throw new Error("Graph " + r.status + " en " + ruta);
+    return await r.json();
+  } finally { clearTimeout(to); }
 }
 async function graphTodos(ruta) {
   let url = ruta, out = [];
@@ -529,14 +534,20 @@ async function init() {
 }
 async function cargarTodo() {
   ponerEstado("Cargando datos...");
-  pintar('<div class="cargando">Cargando clientes, expedientes y agenda<br>desde tu Microsoft 365...</div>');
+  pintar('<div class="cargando">Cargando clientes y expedientes<br>desde tu Microsoft 365...</div>');
   try {
     const yo = await graph("/me");
     FUENTE.usuario = (yo.givenName || yo.displayName || "").split(" ")[0];
-    const [exp, citas] = await Promise.all([cargarExportaciones(), cargarCalendario()]);
-    indexar(exp.clientes, exp.exps, citas);
+    // Esencial primero: clientes y expedientes. La app ya es usable con esto.
+    const exp = await cargarExportaciones();
+    indexar(exp.clientes, exp.exps, []);
     ponerEstado("Conectado");
     irTab("hoy");
+    // La agenda (calendario) se carga aparte: si es lenta o falla, no bloquea la app.
+    cargarCalendario().then(citas => {
+      CITAS = (citas || []).sort((a, b) => a.inicio - b.inicio);
+      if (tabActual === "hoy") pintarHoy(); else if (tabActual === "agenda") pintarAgenda();
+    }).catch(() => {});
   } catch (e) {
     pintar('<div class="vacio"><i class="ti ti-plug-x" style="font-size:34px;color:var(--coral);"></i>' +
       '<p>No se han podido cargar los datos.</p><p class="mini">' + esc(e.message) + '</p>' +
