@@ -5,7 +5,7 @@
    ============================================================ */
 "use strict";
 
-const APP_VERSION = "24";
+const APP_VERSION = "25";
 const CFG = window.NACAR_CONFIG || {};
 const MODO_DEMO = !CFG.clientId;
 const SCOPES = ["User.Read", "Files.Read.All", "Calendars.Read"];
@@ -293,7 +293,7 @@ async function cargarExportaciones() {
       }
     } catch (e) { /* fichero ilegible: probar el siguiente */ }
   }
-  if (!clientesRaw && !expsRaw) throw new Error("No se han encontrado las exportaciones de MN Program en " + (CFG.carpetaExportaciones || "Descargas"));
+  if (!clientesRaw && !expsRaw) throw new Error("Faltan los Excel de MN Program en la carpeta «" + (CFG.carpetaExportaciones || "Descargas") + "». Vuelve a exportar Clientes y Expedientes desde MN Program y guárdalos ahí; luego pulsa Reintentar.");
   return { clientes: clientesRaw ? parseClientes(clientesRaw) : [], exps: expsRaw ? parseExpedientes(expsRaw) : [] };
 }
 
