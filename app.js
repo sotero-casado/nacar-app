@@ -5,6 +5,7 @@
    ============================================================ */
 "use strict";
 
+const APP_VERSION = "24";
 const CFG = window.NACAR_CONFIG || {};
 const MODO_DEMO = !CFG.clientId;
 const SCOPES = ["User.Read", "Files.Read.All", "Calendars.Read"];
@@ -550,8 +551,10 @@ async function cargarTodo() {
     }).catch(() => {});
   } catch (e) {
     pintar('<div class="vacio"><i class="ti ti-plug-x" style="font-size:34px;color:var(--coral);"></i>' +
-      '<p>No se han podido cargar los datos.</p><p class="mini">' + esc(e.message) + '</p>' +
-      '<button class="boton-secundario" onclick="cargarTodo()">Reintentar</button></div>');
+      '<p>No se han podido cargar los datos.</p>' +
+      '<p class="mini" style="color:var(--coral);font-size:13px;margin:6px 18px;">Detalle: ' + esc(e.message) + '</p>' +
+      '<button class="boton-secundario" onclick="cargarTodo()">Reintentar</button>' +
+      '<p class="mini" style="margin-top:10px;">app v' + APP_VERSION + '</p></div>');
   }
 }
 function pintarLogin() {
