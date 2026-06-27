@@ -5,7 +5,7 @@
    ============================================================ */
 "use strict";
 
-const APP_VERSION = "26";
+const APP_VERSION = "27";
 const CFG = window.NACAR_CONFIG || {};
 const MODO_DEMO = !CFG.clientId;
 const SCOPES = ["User.Read", "Files.Read.All", "Calendars.Read"];
@@ -606,18 +606,12 @@ async function cargarTodo() {
   try {
     const yo = await graph("/me");
     FUENTE.usuario = (yo.givenName || yo.displayName || "").split(" ")[0];
-    // Esencial primero: clientes, expedientes y (si está) los señalamientos de MN.
+    // Clientes, expedientes y los señalamientos del Listado de Actuaciones de MN.
+    // La agenda se nutre SOLO de esa exportación semanal (no del calendario de Outlook).
     const exp = await cargarExportaciones();
-    const citasMN = exp.citasMN || [];
-    indexar(exp.clientes, exp.exps, citasMN);   // la agenda ya tiene los señalamientos de MN
+    indexar(exp.clientes, exp.exps, exp.citasMN || []);
     ponerEstado("Conectado");
     irTab("hoy");
-    // El calendario de Outlook se carga aparte y se fusiona (tiempo real + lo que MN
-    // no haya sincronizado). Si es lento o falla, no bloquea la app.
-    cargarCalendario().then(citasOutlook => {
-      CITAS = mergeCitas(citasOutlook || [], citasMN);
-      if (tabActual === "hoy") pintarHoy(); else if (tabActual === "agenda") pintarAgenda();
-    }).catch(() => {});
   } catch (e) {
     pintar('<div class="vacio"><i class="ti ti-plug-x" style="font-size:34px;color:var(--coral);"></i>' +
       '<p>No se han podido cargar los datos.</p>' +
@@ -882,7 +876,7 @@ function grupoCita(c) {
 function capFirst(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 function pintarAgenda() {
   actualizarTabs("agenda");
-  ponerEstado("Agenda · Outlook");
+  ponerEstado("Agenda");
   if (!mesAgenda) { const h = new Date(); mesAgenda = new Date(h.getFullYear(), h.getMonth(), 1); }
   if (!diaSel) diaSel = new Date();
   const ahora = new Date();
@@ -890,9 +884,11 @@ function pintarAgenda() {
   const nJ = futuras.filter(c => grupoCita(c) === "juicio").length;
   const nP = futuras.filter(c => grupoCita(c) === "plazo").length;
   const nO = futuras.length - nJ - nP;
-  const hayMN = CITAS.some(c => c.fuente === "actuacion");
-  let html = '<div class="caja-info"><i class="ti ti-refresh"></i><p>' +
-    (hayMN ? "Señalamientos de MN Program + tu calendario de Outlook" : "Sincronizado con tu calendario de Outlook · se actualiza solo") + '</p></div>' +
+  const fActu = FUENTE.fActu ? fmtFecha(FUENTE.fActu) : "";
+  const banner = MODO_DEMO ? "Señalamientos de muestra"
+    : CITAS.length ? ("Señalamientos de MN Program" + (fActu ? " · exportación del " + fActu : ""))
+    : "Sube el Listado de Actuaciones de MN a Descargas para ver tus señalamientos";
+  let html = '<div class="caja-info"><i class="ti ti-calendar"></i><p>' + banner + '</p></div>' +
     '<div class="chips" style="margin-bottom:4px;">' +
     '<button class="chip' + (vistaAgenda === "mes" ? " activo" : "") + '" onclick="setVistaAgenda(\'mes\')"><i class="ti ti-calendar-month" style="font-size:14px;vertical-align:-2px;"></i> Mes</button>' +
     '<button class="chip' + (vistaAgenda === "lista" ? " activo" : "") + '" onclick="setVistaAgenda(\'lista\')"><i class="ti ti-list" style="font-size:14px;vertical-align:-2px;"></i> Lista</button></div>' +
