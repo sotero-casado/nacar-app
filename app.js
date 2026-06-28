@@ -5,7 +5,7 @@
    ============================================================ */
 "use strict";
 
-const APP_VERSION = "27";
+const APP_VERSION = "28";
 const CFG = window.NACAR_CONFIG || {};
 const MODO_DEMO = !CFG.clientId;
 const SCOPES = ["User.Read", "Files.Read.All", "Calendars.Read"];
@@ -644,7 +644,7 @@ function actualizarAtras() {
 }
 function irTab(tab) {
   if (tab === "agenda") { vistaAgenda = "mes"; mesAgenda = null; diaSel = null; }  // la Agenda abre siempre en vista mensual del mes actual
-  const fn = tab === "hoy" ? pintarHoy : tab === "buscar" ? pintarBuscar : tab === "calc" ? pintarCalc : pintarAgenda;
+  const fn = tab === "hoy" ? pintarHoy : tab === "buscar" ? pintarBuscar : tab === "calc" ? pintarCalc : tab === "gastos" ? pintarGastos : pintarAgenda;
   historial = [fn];
   actualizarTabs(tab);
   fn();
@@ -1268,12 +1268,138 @@ function calcularIndem() {
   out.innerHTML = html;
 }
 
+/* ============================================================
+   GASTOS — facturas de gastos (IVA soportado y categorías)
+   Lee el Excel Facturas-Gastos/<año>/Registro-Facturas-<año>.xlsx
+   de OneDrive (carpeta propia, NO de MN Program). Solo lectura.
+   Los importes (IVA, retención, total, trimestre) se recalculan
+   aquí a partir de base + tipos, así que no dependen de que el
+   Excel se haya abierto nunca en Excel para refrescar fórmulas.
+   ============================================================ */
+const GASTOS = { cargado: false, filas: [], filtro: "ANIO", anio: new Date().getFullYear(), fuente: null };
+const GASTOS_DEMO = [
+  { prov: "Vodafone Servicios, S.L.U.", cat: "Teléfono e Internet", base: 19.55, cuota: 4.11, reten: 0, total: 23.66, tri: "T1" },
+  { prov: "Vodafone Servicios, S.L.U.", cat: "Teléfono e Internet", base: 23.51, cuota: 4.94, reten: 0, total: 28.45, tri: "T1" },
+  { prov: "Asesoría Pérez SL", cat: "Gestoría y prof. independientes", base: 150, cuota: 31.5, reten: 22.5, total: 159, tri: "T1" },
+  { prov: "PcComponentes", cat: "Informática y software", base: 899, cuota: 188.79, reten: 0, total: 1087.79, tri: "T2" }
+];
+
+function serialAFecha(v) {
+  if (v instanceof Date) return v;
+  if (typeof v === "number") return new Date(Math.floor(v) * 86400000 + Date.UTC(1899, 11, 30));
+  const m = /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/.exec(String(v || ""));
+  if (m) { let a = +m[3]; if (a < 100) a += 2000; return new Date(a, +m[2] - 1, +m[1]); }
+  return null;
+}
+function numES(v) {
+  if (v == null || v === "") return 0;
+  if (typeof v === "number") return v;
+  let s = String(v).replace(/[€\s]/g, "");
+  if (s.indexOf(",") >= 0 && s.indexOf(".") >= 0) s = s.replace(/\./g, "").replace(",", ".");
+  else if (s.indexOf(",") >= 0) s = s.replace(",", ".");
+  const n = parseFloat(s); return isNaN(n) ? 0 : n;
+}
+async function cargarGastos() {
+  const anio = GASTOS.anio;
+  const ruta = "/me/drive/root:/Facturas-Gastos/" + anio + "/Registro-Facturas-" + anio + ".xlsx";
+  const meta = await graph(ruta);
+  const r = await fetch(meta["@microsoft.graph.downloadUrl"]);
+  const buf = await r.arrayBuffer();
+  const wb = XLSX.read(buf, { type: "array", cellDates: true });
+  const hoja = wb.Sheets["Facturas"] || wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(hoja, { header: 1, raw: true });
+  let h = -1;
+  for (let i = 0; i < rows.length; i++) {
+    const fila = (rows[i] || []).map(c => norm(String(c || "")));
+    if (fila.indexOf("proveedor") >= 0 && fila.some(x => x.indexOf("base imponible") >= 0)) { h = i; break; }
+  }
+  if (h < 0) throw new Error("No encuentro la cabecera en el Excel de facturas.");
+  const hdr = rows[h];
+  const iF = col(hdr, "Fecha"), iProv = col(hdr, "Proveedor"), iCif = col(hdr, "CIF"),
+    iCat = col(hdr, "Categor"), iBase = col(hdr, "Base imponible"),
+    iIva = col(hdr, "Tipo IVA"), iRet = col(hdr, "Tipo Ret");
+  const out = [];
+  for (let i = h + 1; i < rows.length; i++) {
+    const fila = rows[i]; if (!fila) continue;
+    const prov = String(fila[iProv] || "").trim();
+    const base = numES(fila[iBase]);
+    if (!prov && !base) continue;
+    const tIva = numES(fila[iIva]), tRet = numES(fila[iRet]);
+    const f = serialAFecha(fila[iF]);
+    // Redondeo por factura (2 decimales), igual que el Excel y la propia factura,
+    // para que los totales cuadren al céntimo con el modelo 303.
+    const cuota = Math.round(base * tIva) / 100, reten = Math.round(base * tRet) / 100;
+    out.push({
+      prov, cif: String(fila[iCif] || "").trim(),
+      cat: String(fila[iCat] || "").trim() || "Sin categoría",
+      base, cuota, reten, total: base + cuota - reten,
+      tri: f ? ("T" + (Math.floor(f.getMonth() / 3) + 1)) : "", fecha: f
+    });
+  }
+  GASTOS.filas = out; GASTOS.cargado = true;
+  GASTOS.fuente = meta.lastModifiedDateTime ? new Date(meta.lastModifiedDateTime) : null;
+}
+function pintarGastos(forzar) {
+  actualizarTabs("gastos");
+  ponerEstado(MODO_DEMO ? "Modo demo" : "Gastos");
+  if (MODO_DEMO) { GASTOS.filas = GASTOS_DEMO; GASTOS.cargado = true; renderGastos(); return; }
+  if (GASTOS.cargado && !forzar) { renderGastos(); return; }
+  pintar('<div class="cargando">Cargando tus gastos<br>desde OneDrive...</div>');
+  cargarGastos().then(renderGastos).catch(e => {
+    pintar('<div class="vacio"><i class="ti ti-receipt-off" style="font-size:34px;color:var(--coral);"></i>' +
+      '<p>No se han podido cargar los gastos.</p>' +
+      '<p class="mini" style="color:var(--coral);font-size:13px;margin:6px 18px;">' + esc(e.message) + '</p>' +
+      '<p class="mini" style="margin:6px 18px;">Comprueba que existe el Excel<br>Facturas-Gastos/' + GASTOS.anio + '/Registro-Facturas-' + GASTOS.anio + '.xlsx</p>' +
+      '<button class="boton-secundario" onclick="pintarGastos(true)">Reintentar</button></div>');
+  });
+}
+function setGastosFiltro(f) { GASTOS.filtro = f; renderGastos(); }
+function renderGastos() {
+  const filtro = GASTOS.filtro;
+  const filas = filtro === "ANIO" ? GASTOS.filas : GASTOS.filas.filter(x => x.tri === filtro);
+  const tot = filas.reduce((a, x) => ({ base: a.base + x.base, iva: a.iva + x.cuota, ret: a.ret + x.reten, total: a.total + x.total }), { base: 0, iva: 0, ret: 0, total: 0 });
+  const porCat = {};
+  filas.forEach(x => { porCat[x.cat] = (porCat[x.cat] || 0) + x.base; });
+  const cats = Object.keys(porCat).map(k => [k, porCat[k]]).sort((a, b) => b[1] - a[1]);
+  const maxCat = cats.length ? cats[0][1] : 0;
+  const chip = (v, txt) => '<button class="chip' + (filtro === v ? " activo" : "") + '" onclick="setGastosFiltro(\'' + v + '\')">' + txt + '</button>';
+
+  let html = '<div class="saludo"><h1>Gastos ' + GASTOS.anio + '</h1>' +
+    '<p>' + filas.length + ' factura' + (filas.length === 1 ? "" : "s") + (filtro === "ANIO" ? " en el año" : " en el " + filtro) + '</p></div>';
+  html += '<div class="chips">' + chip("ANIO", "Año") + chip("T1", "T1") + chip("T2", "T2") + chip("T3", "T3") + chip("T4", "T4") + '</div>';
+  html += '<div class="metricas">' +
+    '<div class="metrica"><p class="num">' + FMT_EUR.format(tot.base) + '</p><p class="lbl">Base imponible</p></div>' +
+    '<div class="metrica"><p class="num">' + FMT_EUR.format(tot.iva) + '</p><p class="lbl">IVA soportado</p></div></div>';
+  html += '<div class="metricas">' +
+    '<div class="metrica ambar"><p class="num">' + FMT_EUR.format(tot.ret) + '</p><p class="lbl">Retenciones IRPF</p></div>' +
+    '<div class="metrica"><p class="num">' + FMT_EUR.format(tot.total) + '</p><p class="lbl">Total pagado</p></div></div>';
+  html += '<p class="seccion">EN QUÉ TE GASTAS EL DINERO</p>';
+  if (!cats.length) {
+    html += '<p class="vacio">No hay facturas en este periodo.</p>';
+  } else {
+    html += '<div style="padding:4px 16px 18px;">';
+    cats.forEach(c => {
+      const pct = maxCat ? Math.round(c[1] / maxCat * 100) : 0;
+      html += '<div style="margin:11px 0;">' +
+        '<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;margin-bottom:4px;"><span>' + esc(c[0]) + '</span><span style="font-weight:600;">' + FMT_EUR.format(c[1]) + '</span></div>' +
+        '<div style="height:7px;background:var(--fondo-2);border-radius:5px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:var(--teal);border-radius:5px;"></div></div>' +
+        '</div>';
+    });
+    html += '</div>';
+  }
+  html += '<div class="caja-info"><i class="ti ti-info-circle"></i><p>IVA soportado = deducible en el modelo 303. ' +
+    (MODO_DEMO ? "Datos de muestra." : "Origen: Registro-Facturas-" + GASTOS.anio + (GASTOS.fuente ? " · act. " + fmtDia(GASTOS.fuente) : "")) + '</p></div>';
+  if (!MODO_DEMO) html += '<button class="boton-linea" onclick="pintarGastos(true)"><p><i class="ti ti-refresh" style="vertical-align:-2px;"></i> Actualizar gastos</p></button>';
+  pintar(html);
+}
+
 /* expone funciones usadas desde HTML inline */
 Object.assign(window, {
   irTab, abrirClienteNav, abrirExpedienteNav, abrirContrarioNav, abrirCitaNav,
   abrirDoc, compartirDoc, cambiarFiltro, pintarResultadosAtajo, refrescar,
   cerrarSesion, pintarCalidad, irA, cargarTodo, pintarCalc, calcularIndem, abrirDocUrl,
-  setVistaAgenda, agendaMes, seleccionarDia
+  setVistaAgenda, agendaMes, seleccionarDia,
+  pintarGastos, setGastosFiltro
 });
 
 init().catch(e => {
